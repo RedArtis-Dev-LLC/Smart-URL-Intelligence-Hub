@@ -1,0 +1,2 @@
+com.smarturl.hub.common.security.HeaderAuthSecurityAutoConfiguration
+com.smarturl.hub.common.error.ErrorHandlingAutoConfiguration

@@ -304,7 +304,7 @@ ip, country, city, deviceType, os, browser, referrer
 
 - [x] Stage 1 — Project Scaffolding & Infrastructure
 - [x] Stage 2 — Config Server
-- [ ] Stage 3 — common-lib Module
+- [x] Stage 3 — common-lib Module
 - [ ] Stage 4 — Auth Service
 - [ ] Stage 5 — API Gateway
 - [ ] Stage 6 — Link Service
@@ -359,51 +359,63 @@ handling of unknown service names.
 
 ### Stage 3 — common-lib Module
 
-Implement the shared Spring Boot auto-configured starter consumed by all downstream
-services (everything except auth-service, which is the token issuer).
+Implement the shared Spring Boot auto-configured starter consumed by all servlet-based
+services: auth-service, link-service, analytics-service, webhook-service. The
+api-gateway is reactive (WebFlux) and pulls observability dependencies directly rather
+than via common-lib.
 
 Provide:
 
 - **`AuthenticatedUser` POJO** — userId, email, roles.
-- **`GatewayAuthFilter`** — reads `X-User-Id`, `X-User-Email`, `X-User-Roles` headers,
-  builds `Authentication`, sets on `SecurityContextHolder`.
+- **`GatewayAuthFilter`** — servlet `OncePerRequestFilter` that reads `X-User-Id`,
+  `X-User-Email`, `X-User-Roles` headers, builds `Authentication`, sets on
+  `SecurityContextHolder`. No-op when headers are absent.
 - **Default `SecurityFilterChain`** — STATELESS, CSRF off, `/actuator/health` public,
-  all else authenticated. `@ConditionalOnMissingBean` so services can override.
+  all else authenticated. `@ConditionalOnMissingBean(SecurityFilterChain.class)` so
+  services can override (auth-service does, to whitelist its public `/auth/**` endpoints).
 - **Global error handling** — `@RestControllerAdvice` returning RFC 7807 Problem Details
   (`application/problem+json`). Must handle at minimum:
   - `MethodArgumentNotValidException` → 400 with field-level validation errors in the
     `errors` extension field.
   - `AccessDeniedException` → 403.
   - Unhandled `Exception` → 500, without leaking stack traces to the client.
-  Auth-service gets its own identical `@RestControllerAdvice` since it does not depend
-  on common-lib.
-- **`logback-spring.xml`** — JSON appender (logstash-logback-encoder) for non-test
-  profiles; pattern appender for test profile. Fields must include `traceId` and `spanId`
-  from MDC.
+- **`logback-common.xml`** — included by each consuming service's own
+  `logback-spring.xml`. JSON appender (logstash-logback-encoder) for non-test profiles;
+  pattern appender for test profile. Fields must include `traceId` and `spanId` from MDC.
 - Micrometer Tracing, Zipkin reporter, and Prometheus registry as transitive dependencies
   so consuming services get observability auto-configured.
+- `spring-cloud-starter-config` as transitive so consuming services pick up the
+  Config Server import.
 
 Register via `AutoConfiguration.imports`. Write unit tests for the filter and the
 error handler (verify correct HTTP status and Problem Details structure per exception
-type).
+type), plus a `@SpringBootTest` slice with a stub controller asserting the starter
+auto-wires correctly.
 
 ---
 
 ### Stage 4 — Auth Service
 
 Implement user registration, login, RS256 JWT issuance, refresh token rotation, and
-logout with Redis-based revocation. Auth-service does **not** depend on common-lib.
+logout with Redis-based revocation. Auth-service depends on common-lib but overrides
+the default `SecurityFilterChain` to whitelist its `/auth/**` endpoints (the gateway
+does not validate JWTs for `/auth/**` routes, so X-User-* headers are not injected for
+this service — token introspection happens in auth-service per-endpoint).
 
 Key points:
 - Apply Jakarta Validation on register (`@NotBlank` email, password min length) and
-  login request DTOs. Return 400 Problem Details on violation.
+  login request DTOs. 400 Problem Details on violation comes for free from common-lib's
+  `@RestControllerAdvice`.
 - Load RSA private + public key from paths defined in `config/auth-service.yml`.
 - Access tokens: RS256, 15-min expiry, include `jti` (UUID).
 - Refresh tokens: opaque UUID stored hashed in PostgreSQL.
 - `POST /auth/logout` writes `revoked:{jti}` to Redis with TTL = remaining token life.
+  Extracts user/jti by validating the bearer token itself (the gateway treats `/auth/**`
+  as public and does not pre-validate).
 - `GET /auth/public-key` exposes PEM public key (public endpoint).
 - Liquibase YAML changelogs for database `auth_db` (see Section 3 for table definitions).
-- Include own copy of `logback-spring.xml` and own `@RestControllerAdvice`.
+- Provide a `logback-spring.xml` that `<include>`s `logback-common.xml` from common-lib.
+- Override `SecurityFilterChain` bean to permit all `/auth/**` requests.
 
 Integration tests: full register → login → refresh → logout flow; assert `jti` in Redis
 after logout; assert revoked refresh token rejected; assert invalid input returns 400.

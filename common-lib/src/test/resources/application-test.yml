@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: common-lib-test
+  cloud:
+    config:
+      enabled: false
+  config:
+    import: ""
+
+management:
+  tracing:
+    enabled: false
+  zipkin:
+    tracing:
+      export:
+        enabled: false
