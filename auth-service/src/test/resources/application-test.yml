@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: auth-service
+  cloud:
+    config:
+      enabled: false
+  config:
+    import: ""
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+management:
+  tracing:
+    enabled: false
+  zipkin:
+    tracing:
+      export:
+        enabled: false
+
+auth:
+  jwt:
+    access-token-ttl: 15m
+    refresh-token-ttl: 7d
+    issuer: smart-url-hub-auth-test
