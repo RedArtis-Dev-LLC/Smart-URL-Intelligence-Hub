@@ -315,7 +315,7 @@ Key principles:
 - [x] Stage 1 — Project Scaffolding & Infrastructure
 - [x] Stage 2 — Config Server
 - [x] Stage 3 — common-lib Module
-- [ ] Stage 4 — Auth Service
+- [x] Stage 4 — Auth Service
 - [ ] Stage 5 — API Gateway
 - [ ] Stage 6 — Link Service
 - [ ] Stage 7 — Analytics Service
