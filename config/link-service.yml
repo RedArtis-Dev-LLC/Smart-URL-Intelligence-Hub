@@ -1,1 +1,8 @@
-# link-service configuration. Populated in Stage 2.
+server:
+  port: 8082
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/links_db
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
