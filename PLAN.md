@@ -279,9 +279,16 @@ ip, country, city, deviceType, os, browser, referrer
 
 ## 5. Testing Approach
 
+See [`test-approach.md`](test-approach.md) for full conventions, patterns, and anti-patterns.
+
+Key principles:
+
 - **Integration tests over unit tests.** Each service has a test suite exercising the
   full stack from HTTP/AMQP inbound to DB/broker outbound using real infrastructure
   via Testcontainers.
+- **One IT class per endpoint/feature.** Each integration test class covers a single
+  endpoint with all edge cases (happy path, validation failures, error scenarios).
+  No multi-endpoint flow tests.
 - **Unit tests** only for pure logic with no infrastructure dependencies.
 - **Single shared context per service.** One `AbstractIntegrationTest` base class per
   service declares all containers as `static`, starts them once, and wires properties
@@ -289,6 +296,9 @@ ip, country, city, deviceType, os, browser, referrer
 - **No Mockito in integration tests.** External HTTP calls (ip-api.com, webhook targets,
   Feign inter-service calls) are stubbed via `WireMockContainer`. Mockito is permitted
   in unit tests only.
+- **API utilities encapsulate HTTP calls.** `AuthApiUtils.OK.*` methods assert success
+  and return parsed bodies; `AuthApiUtils.Error.*` methods return raw responses for
+  custom assertions.
 - **Config Server disabled in tests.** Every service module has
   `src/test/resources/application-test.yml` setting `spring.config.import=""`.
   All properties come from `@DynamicPropertySource`.
