@@ -24,6 +24,7 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     networks: [hub-internal]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -123,3 +124,22 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  config-server:
+    build:
+      context: ..
+      dockerfile: config-server/Dockerfile
+    image: smart-url-hub/config-server:0.0.1
+    container_name: hub-config-server
+    restart: unless-stopped
+    environment:
+      CONFIG_REPO_PATH: file:/config
+    volumes:
+      - ../config:/config:ro
+    networks: [hub-internal]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8888/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s

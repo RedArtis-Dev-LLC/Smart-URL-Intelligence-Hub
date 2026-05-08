@@ -96,6 +96,14 @@ spring:
     name: {service-name}
 ```
 
+**Future (non-local environments):** for staging/prod the config-server backend
+will switch from `native` filesystem to **HashiCorp Vault**. Secrets (DB
+credentials, RabbitMQ creds, Redis password, JWT keys) will live in Vault and
+the config-server will resolve them via the Spring Cloud Config Vault
+integration. Downstream services keep declaring only
+`spring.config.import=configserver:...` and never know the storage backend
+changed.
+
 ### 2.4 Network security
 
 Only `api-gateway` is on both the host-facing and internal Docker networks. All other
@@ -137,7 +145,7 @@ Required custom metrics:
 
 ## 3. Database Schema
 
-### PostgreSQL — schema: `auth`
+### PostgreSQL — database: `auth_db`
 
 **users**
 
@@ -161,7 +169,7 @@ Required custom metrics:
 
 ---
 
-### PostgreSQL — schema: `links`
+### PostgreSQL — database: `links_db`
 
 **links**
 
@@ -191,7 +199,7 @@ Required custom metrics:
 
 ---
 
-### PostgreSQL — schema: `webhooks`
+### PostgreSQL — database: `webhooks_db`
 
 **webhook_configs**
 
@@ -295,7 +303,7 @@ ip, country, city, deviceType, os, browser, referrer
 ### Stage Status
 
 - [x] Stage 1 — Project Scaffolding & Infrastructure
-- [ ] Stage 2 — Config Server
+- [x] Stage 2 — Config Server
 - [ ] Stage 3 — common-lib Module
 - [ ] Stage 4 — Auth Service
 - [ ] Stage 5 — API Gateway
@@ -394,7 +402,7 @@ Key points:
 - Refresh tokens: opaque UUID stored hashed in PostgreSQL.
 - `POST /auth/logout` writes `revoked:{jti}` to Redis with TTL = remaining token life.
 - `GET /auth/public-key` exposes PEM public key (public endpoint).
-- Liquibase YAML changelogs for schema `auth` (see Section 3 for table definitions).
+- Liquibase YAML changelogs for database `auth_db` (see Section 3 for table definitions).
 - Include own copy of `logback-spring.xml` and own `@RestControllerAdvice`.
 
 Integration tests: full register → login → refresh → logout flow; assert `jti` in Redis
@@ -433,7 +441,7 @@ Key points:
 - Outbox poller `@Scheduled` (2s fixed delay): `SELECT … FOR UPDATE SKIP LOCKED LIMIT 50`,
   publish to `click.events` exchange, mark published — all in one `@Transactional`.
 - Register `outbox.pending.events` gauge backed by unpublished row count.
-- Liquibase YAML changelogs for schema `links` (see Section 3).
+- Liquibase YAML changelogs for database `links_db` (see Section 3).
 - Depends on common-lib for security and error handling.
 
 Integration tests: redirect flow, outbox row written, poller publishes to RabbitMQ,
@@ -487,7 +495,7 @@ Key points:
 - Register `webhook.deliveries.total` counter (tags: `success`, `failed`, `circuit_open`).
 - Resilience4j CB config in `config/webhook-service.yml` (window 10, threshold 50%,
   open 30s).
-- Liquibase YAML changelogs for schema `webhooks` (see Section 3).
+- Liquibase YAML changelogs for database `webhooks_db` (see Section 3).
 - Depends on common-lib.
 
 Integration tests with WireMock stubs for target URLs and link-service Feign client.
@@ -538,7 +546,7 @@ Actions.
 
 | #  | Question                                                 | Resolution                          |
 |----|----------------------------------------------------------|-------------------------------------|
-| 1  | One Postgres container or separate containers?           | One container, separate schemas     |
+| 1  | One Postgres container or separate containers?           | One container, per-service databases (`auth_db`, `links_db`, `webhooks_db`) created via init script |
 | 2  | DB migration tool and format?                            | Liquibase, YAML format              |
 | 3  | Roles in DB or hardcoded?                                | Always ROLE_USER                    |
 | 4  | Rate limiting in gateway?                                | Skip for now                        |
