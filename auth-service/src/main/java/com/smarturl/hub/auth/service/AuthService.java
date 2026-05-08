@@ -15,6 +15,7 @@ import com.smarturl.hub.auth.service.RefreshTokenService.RotationResult;
 import java.time.Clock;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +36,7 @@ public class AuthService {
     public AuthResponse register(String email, String rawPassword) {
         String normalisedEmail = email.toLowerCase();
         if (userRepository.existsByEmail(normalisedEmail)) {
-            throw new EmailAlreadyExistsException(normalisedEmail);
+            throw new EmailAlreadyExistsException();
         }
         User user = User.builder()
                 .id(UUID.randomUUID())
@@ -43,7 +44,11 @@ public class AuthService {
                 .passwordHash(passwordEncoder.encode(rawPassword))
                 .createdAt(clock.instant())
                 .build();
-        userRepository.save(user);
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException _) {
+            throw new EmailAlreadyExistsException();
+        }
         return issueTokens(user);
     }
 

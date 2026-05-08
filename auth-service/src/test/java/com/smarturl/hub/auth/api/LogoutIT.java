@@ -39,7 +39,7 @@ class LogoutIT extends AbstractIntegrationTest {
         AuthApiUtils.OK.logout(registered.accessToken(), restTemplate);
 
         //then
-        assertThat(redis.hasKey("revoked:" + jti)).isTrue();
+        assertThat(redis.hasKey("auth:revoked:" + jti)).isTrue();
     }
 
     @Test

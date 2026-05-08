@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class TokenRevocationService {
 
-    private static final String KEY_PREFIX = "revoked:";
+    private static final String KEY_PREFIX = "auth:revoked:";
 
     private final StringRedisTemplate redisTemplate;
     private final Clock clock;
