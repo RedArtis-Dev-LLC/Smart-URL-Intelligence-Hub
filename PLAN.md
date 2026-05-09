@@ -273,6 +273,8 @@ ip, country, city, deviceType, os, browser, referrer
 | Containerisation      | Docker + Docker Compose                                   |
 | CI                    | GitHub Actions                                            |
 | Testing               | JUnit 5, Testcontainers, WireMock, AssertJ                |
+| Coverage              | JaCoCo (per-module reports)                               |
+| Code quality          | SonarQube 26.2 Community (local docker-compose) + sonar-maven-plugin — one Sonar project per service |
 | Geo / UA parsing      | ip-api.com HTTP call (WireMocked in tests)                |
 
 ---
@@ -306,6 +308,67 @@ Key principles:
   containers not started — configure Zipkin reporter to a no-op or WireMock stub.
   At least one test per service asserts that `traceId` is present in log output.
 
+### 5.1 Code Quality (SonarQube)
+
+Code quality is enforced by a local SonarQube 26.2 Community server defined in
+`docker/docker-compose.yml` under the `sonar` Docker Compose profile (so it does not
+start by default — `docker compose --profile sonar up -d sonarqube` to launch).
+
+**One Sonar project per service.** Each Maven module is scanned independently and
+appears as its own project in the SonarQube UI, so you can open a single service in
+isolation. The project key is derived in the parent POM as
+`smart-url-hub-${project.artifactId}` and the project name as `${project.artifactId}`,
+so scanning a module with `-pl <module>` automatically produces a uniquely-keyed
+Sonar project (e.g., `smart-url-hub-auth-service`,
+`smart-url-hub-link-service`).
+
+Coverage is produced per-module by JaCoCo: each module emits `target/jacoco.exec`
+(unit, via `prepare-agent`) and `target/jacoco-it.exec` (integration, via
+`prepare-agent-integration`). The `report` and `report-integration` goals fire in
+the `test` and `verify` phases and write
+`target/site/jacoco/jacoco.xml` and `target/site/jacoco-it/jacoco.xml`. Sonar reads
+both files via `sonar.coverage.jacoco.xmlReportPaths` declared in the parent POM.
+
+The Sonar scan covers (per service):
+
+- **Code coverage** — JaCoCo unit + integration; quality-gate threshold per Sonar Way
+  (≥80% on new code).
+- **Code smells & maintainability** — default Sonar Way Java rule set (complexity,
+  duplication, naming, dead code).
+- **Bugs & reliability** — null checks, resource leaks, broken contracts.
+- **Security vulnerabilities & hotspots** — OWASP-style findings (SQL injection,
+  weak crypto, hardcoded secrets) and security hotspot review.
+
+Quality gate: **Sonar Way** default — ≥80% coverage on new code, 0 new bugs, 0 new
+vulnerabilities, ≤3% duplication on new code, all hotspots reviewed. CI fails when
+any service's gate fails (`-Dsonar.qualitygate.wait=true`).
+
+Coverage exclusions (declared in parent POM, so each per-service project inherits
+them):
+`**/*Application.java`, `**/config/**`, `**/dto/**`, `**/entity/**`, `**/model/**`,
+`**/exception/**`.
+
+Local usage:
+
+```powershell
+docker compose --profile sonar up -d sonarqube
+# First login at http://localhost:9000 — admin / admin, force password change, then
+# create a global analysis token under My Account > Security.
+$env:SONAR_TOKEN = "<token>"
+
+# Build everything once so all jacoco XMLs exist:
+./mvnw verify
+
+# Scan one service in isolation:
+./mvnw -pl auth-service sonar:sonar "-Dsonar.token=$env:SONAR_TOKEN"
+
+# Or scan every service in turn (each creates / updates its own Sonar project):
+"common-lib","config-server","auth-service","api-gateway","link-service",`
+    "analytics-service","webhook-service" | ForEach-Object {
+    ./mvnw -pl $_ sonar:sonar "-Dsonar.token=$env:SONAR_TOKEN"
+}
+```
+
 ---
 
 ## 6. Implementation Plan
@@ -335,7 +398,19 @@ every container. Add `docker/prometheus/prometheus.yml` with scrape targets for 
 application services (by container name). Create the `config/` directory with empty
 placeholder YAML files. Create a root `.env` with placeholder secrets.
 
-**Done when:** `docker compose up -d` brings all infrastructure containers to healthy.
+Add the `sonarqube` and `sonar-db` services to `docker-compose.yml` under the `sonar`
+Docker Compose profile so they only start on demand (`docker compose --profile sonar
+up -d sonarqube`). Add `SONAR_DB_USER` / `SONAR_DB_PASSWORD` / `SONAR_DB_NAME` /
+`SONAR_HOST_URL` / `SONAR_TOKEN` to `.env`. Configure `jacoco-maven-plugin` and
+`sonar-maven-plugin` in the parent `<pluginManagement>` and activate JaCoCo for all
+modules. In the parent `<properties>` set `sonar.projectKey` to
+`smart-url-hub-${project.artifactId}` so each Maven module becomes its own Sonar
+project automatically when scanned with `-pl`.
+
+**Done when:** `docker compose up -d` brings all infrastructure containers to healthy,
+`docker compose --profile sonar up -d sonarqube` brings SonarQube to healthy on
+http://localhost:9000, and `./mvnw verify` produces per-module
+`target/site/jacoco/jacoco.xml` files.
 
 ---
 
@@ -552,15 +627,43 @@ Create a GitHub Actions workflow at `.github/workflows/ci.yml`.
 
 Key points:
 - Trigger on push and pull request to `main`.
-- Single job with the following steps: checkout, set up Java 25, cache Maven
-  dependencies, run `mvn verify` (compiles all modules and runs unit + integration
-  tests). Testcontainers requires Docker — GitHub Actions runners have Docker available
-  by default; no extra setup needed.
-- The workflow must not require any secrets or external services beyond Docker.
-- If any module's tests fail, the entire job fails.
+- Single job with the following steps:
+  1. Checkout with `fetch-depth: 0` — Sonar needs full git history for accurate
+     new-code detection and blame.
+  2. Set up Java 25 and cache `~/.m2/repository` and `~/.sonar/cache`.
+  3. Start a SonarQube service container (`sonarqube:26.2.0.119303-community` + a Postgres
+     service container) so the scan does not depend on any external host. Wait for
+     `/api/system/status` to report `UP`, then bootstrap a global analysis token via
+     the Sonar Web API (using the default `admin`/`admin` credentials, then changing
+     the password) and export it as `SONAR_TOKEN` for subsequent steps.
+  4. Run `./mvnw verify` — compiles all modules, runs unit + integration tests,
+     emits per-module `jacoco.exec` / `jacoco-it.exec` and the corresponding XML
+     reports.
+  5. Scan each service module in turn so each one creates / updates its own Sonar
+     project. Recommended pattern: a GitHub Actions matrix job (one entry per
+     module: `common-lib`, `config-server`, `auth-service`, `api-gateway`,
+     `link-service`, `analytics-service`, `webhook-service`) running
+     `./mvnw -pl ${{ matrix.module }} sonar:sonar
+     -Dsonar.host.url=http://localhost:9000
+     -Dsonar.token=$SONAR_TOKEN
+     -Dsonar.qualitygate.wait=true`. A matrix is preferable to a shell loop because
+     each service's gate failure is reported as a separate failed job rather than
+     short-circuiting the rest. Alternative if a matrix is overkill: a single shell
+     loop that records each module's gate result and fails the job at the end if any
+     failed.
+- The `qualitygate.wait` flag makes the Maven invocation fail when the Sonar Way
+  gate fails for that service (coverage <80% on new code, new bugs, new
+  vulnerabilities, unreviewed hotspots, etc.).
+- Testcontainers requires Docker — GitHub Actions runners have Docker available by
+  default; no extra setup needed.
+- The bootstrap `SONAR_TOKEN` is generated at runtime, so the workflow does not
+  require any pre-provisioned repository secret.
+- If any module's tests fail OR any service's Sonar quality gate fails, the workflow
+  fails.
 
-**Done when:** a push to `main` triggers the workflow and all checks pass in GitHub
-Actions.
+**Done when:** a push to `main` triggers the workflow, all tests pass, every
+service's Sonar quality gate passes, and each service appears as its own project in
+the SonarQube UI.
 
 ---
 
@@ -580,3 +683,70 @@ Actions.
 | 10 | DLQ automatic retry?                                     | No — dead-letter logging only       |
 | 11 | Feign client interfaces — shared artifact or per-consumer? | Per-consumer (no shared module)   |
 | 12 | Feign timeout values?                                    | Connect 2s / Read 5s (default)      |
+
+---
+
+## 8. Suggestions for Improvement
+
+Areas identified during code review that should be addressed before production deployment.
+
+### 8.1 Rate Limiting on Authentication Endpoints (High Priority)
+
+`/auth/login` and `/auth/register` have no rate limiting — they are vulnerable to brute
+force and credential stuffing attacks. Implement at the API Gateway level using Spring
+Cloud Gateway's built-in `RequestRateLimiter` filter backed by Redis (token bucket
+algorithm). Suggested limits:
+- `/auth/login`: 10 requests/minute per IP
+- `/auth/register`: 5 requests/minute per IP
+- `/auth/refresh`: 20 requests/minute per IP
+
+This revisits Open Question #4 — rate limiting should no longer be skipped.
+
+### 8.2 Config Server Startup Strategy (Medium Priority)
+
+Services currently use `optional:configserver:` import combined with `fail-fast: true`,
+which is contradictory. Two options:
+- **Option A (recommended):** Remove `optional:` prefix — services fail fast and
+  explicitly if config-server is unavailable. This makes deployment order clear.
+- **Option B:** Set `fail-fast: false` and provide local fallback properties in each
+  service's `application.yml` so services can start in degraded mode during local
+  development without config-server.
+
+### 8.3 MongoDB Application User (Medium Priority)
+
+`analytics-service.yml` connects to MongoDB using `MONGO_INITDB_ROOT_USERNAME` /
+`MONGO_INITDB_ROOT_PASSWORD` — root credentials for an application service. Create a
+scoped application user with read/write access only to the `analytics` database:
+- Add `docker/mongo/init/01-create-app-user.js` that creates a user with
+  `readWrite` role on the `analytics` database.
+- Update `analytics-service.yml` to use the new app credentials.
+
+### 8.4 JWT Key Mounting in Docker Compose (Required for Stage 9)
+
+Configuration references `/run/secrets/auth-jwt/private.pem` and `/public.pem`, but
+`docker-compose.yml` has no volume or Docker secret definition for these files. When
+containerising application services (Stage 9):
+- Generate RSA key pair during project setup (gitignored).
+- Mount keys via Docker Compose volumes or use Docker secrets.
+- Add a `docker/scripts/generate-keys.sh` helper.
+
+### 8.5 Structured Logging in Tests (Low Priority)
+
+Tests currently produce verbose plain-text logs. Add a `logback-test.xml` to each
+service's `src/test/resources/` with a simplified pattern (e.g., `%level %logger{20} -
+%msg%n`) to reduce CI noise and improve readability.
+
+### 8.6 Service Health Probes in Docker Compose (Required for Stage 9)
+
+Application services (api-gateway, auth-service, link-service, analytics-service,
+webhook-service) have no healthcheck definitions in `docker-compose.yml`. Add Spring Boot
+Actuator-based health checks:
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "wget -q --spider http://localhost:<port>/actuator/health || exit 1"]
+  interval: 10s
+  timeout: 5s
+  retries: 10
+  start_period: 30s
+```
+Combine with `depends_on.<service>.condition: service_healthy` to enforce startup ordering.
