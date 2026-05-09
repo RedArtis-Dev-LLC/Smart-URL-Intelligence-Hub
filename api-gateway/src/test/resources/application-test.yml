@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    config:
+      enabled: false
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 10s
+          routes:
+            - id: links-api
+              uri: ${test.downstream.uri}
+              predicates:
+                - Path=/links/**
+
+            - id: analytics-api
+              uri: ${test.downstream.uri}
+              predicates:
+                - Path=/analytics/**
+
+            - id: webhooks-api
+              uri: ${test.downstream.uri}
+              predicates:
+                - Path=/webhooks/**
+
+            # Long form to avoid comma in {1,50} being treated as arg separator
+            - id: redirect
+              uri: ${test.downstream.uri}
+              predicates:
+                - name: Path
+                  args:
+                    pattern: "/{shortCode:[A-Za-z0-9_-]{1,50}}"
+                - Method=GET
+              metadata:
+                public: true
+  config:
+    import: ""
+
+management:
+  tracing:
+    enabled: false
+  zipkin:
+    tracing:
+      export:
+        enabled: false
+
+gateway:
+  jwt:
+    issuer: smart-url-hub-auth-test
