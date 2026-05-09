@@ -25,7 +25,7 @@ public class AuthSecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(eh -> eh.authenticationEntryPoint(authenticationEntryPoint))
                 .addFilterBefore(gatewayAuthFilter, UsernamePasswordAuthenticationFilter.class);

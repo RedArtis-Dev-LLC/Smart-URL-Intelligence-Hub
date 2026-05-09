@@ -50,13 +50,17 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
         chain.doFilter(request, response);
     }
 
+    private static final int MAX_ROLES = 20;
+    private static final int MAX_ROLE_LENGTH = 64;
+
     private static List<String> parseRoles(String header) {
-        if (header == null || header.isBlank()) {
+        if (header == null || header.isBlank() || header.length() > MAX_ROLES * (MAX_ROLE_LENGTH + 1)) {
             return List.of();
         }
-        return Arrays.stream(header.split(","))
+        return Arrays.stream(header.split(",", MAX_ROLES + 1))
+                .limit(MAX_ROLES)
                 .map(String::trim)
-                .filter(s -> !s.isEmpty())
+                .filter(s -> !s.isEmpty() && s.length() <= MAX_ROLE_LENGTH)
                 .toList();
     }
 }

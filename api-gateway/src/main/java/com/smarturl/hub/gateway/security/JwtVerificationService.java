@@ -10,6 +10,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,10 +34,16 @@ public class JwtVerificationService {
                     .parseSignedClaims(token)
                     .getPayload();
 
+            if (claims.getSubject() == null || claims.getId() == null || claims.getExpiration() == null) {
+                throw new TokenInvalidException("Token is missing required claims");
+            }
             UUID userId = UUID.fromString(claims.getSubject());
             UUID jti = UUID.fromString(claims.getId());
             String email = claims.get("email", String.class);
             List<String> roles = claims.get("roles", List.class);
+            if (roles != null && !roles.stream().allMatch(Objects::nonNull)) {
+                throw new TokenInvalidException("Token contains invalid roles claim");
+            }
             return new ParsedToken(
                     userId,
                     email,

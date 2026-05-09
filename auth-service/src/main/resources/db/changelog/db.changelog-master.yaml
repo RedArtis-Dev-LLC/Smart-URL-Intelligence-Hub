@@ -3,3 +3,5 @@ databaseChangeLog:
       file: db/changelog/001-create-users.yaml
   - include:
       file: db/changelog/002-create-refresh-tokens.yaml
+  - include:
+      file: db/changelog/003-add-refresh-tokens-indexes.yaml

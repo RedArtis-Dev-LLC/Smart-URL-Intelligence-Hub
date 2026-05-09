@@ -2,7 +2,6 @@ package com.smarturl.hub.auth.service;
 
 import com.smarturl.hub.auth.api.dto.AuthResponse;
 import com.smarturl.hub.auth.api.dto.UserResponse;
-import com.smarturl.hub.auth.config.JwtProperties;
 import com.smarturl.hub.auth.domain.User;
 import com.smarturl.hub.auth.domain.UserRepository;
 import com.smarturl.hub.auth.error.EmailAlreadyExistsException;
@@ -15,11 +14,13 @@ import com.smarturl.hub.auth.service.RefreshTokenService.RotationResult;
 import java.time.Clock;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -29,15 +30,11 @@ public class AuthService {
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
     private final TokenRevocationService revocationService;
-    private final JwtProperties jwtProperties;
     private final Clock clock;
 
     @Transactional
     public AuthResponse register(String email, String rawPassword) {
         String normalisedEmail = email.toLowerCase();
-        if (userRepository.existsByEmail(normalisedEmail)) {
-            throw new EmailAlreadyExistsException();
-        }
         User user = User.builder()
                 .id(UUID.randomUUID())
                 .email(normalisedEmail)
@@ -54,11 +51,17 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(String email, String rawPassword) {
-        User user = userRepository.findByEmail(email.toLowerCase())
-                .orElseThrow(InvalidCredentialsException::new);
+        String normalisedEmail = email.toLowerCase();
+        User user = userRepository.findByEmail(normalisedEmail)
+                .orElseThrow(() -> {
+                    log.warn("Login failed: email not found [email={}]", normalisedEmail);
+                    return new InvalidCredentialsException();
+                });
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            log.warn("Login failed: wrong password [userId={}, email={}]", user.getId(), normalisedEmail);
             throw new InvalidCredentialsException();
         }
+        log.info("Login successful [userId={}, email={}]", user.getId(), normalisedEmail);
         return issueTokens(user);
     }
 
@@ -77,6 +80,7 @@ public class AuthService {
             return;
         }
         revocationService.revoke(parsed.jti(), parsed.expiresAt());
+        log.info("Token revoked [userId={}, jti={}]", parsed.userId(), parsed.jti());
     }
 
     public UserResponse currentUser(String bearerHeader) {

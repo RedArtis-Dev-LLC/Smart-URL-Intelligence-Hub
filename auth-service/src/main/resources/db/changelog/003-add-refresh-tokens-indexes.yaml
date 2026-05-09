@@ -1,0 +1,28 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-fk-cascade-on-delete
+      author: smart-url-hub
+      changes:
+        - dropForeignKeyConstraint:
+            baseTableName: refresh_tokens
+            constraintName: fk_refresh_tokens_user
+        - addForeignKeyConstraint:
+            baseTableName: refresh_tokens
+            baseColumnNames: user_id
+            constraintName: fk_refresh_tokens_user
+            referencedTableName: users
+            referencedColumnNames: id
+            onDelete: CASCADE
+
+  - changeSet:
+      id: 003-idx-expires-revoked
+      author: smart-url-hub
+      changes:
+        - createIndex:
+            indexName: idx_refresh_tokens_expires_revoked
+            tableName: refresh_tokens
+            columns:
+              - column:
+                  name: expires_at
+              - column:
+                  name: revoked
