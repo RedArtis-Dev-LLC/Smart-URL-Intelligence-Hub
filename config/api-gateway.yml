@@ -1,2 +1,45 @@
 server:
   port: 8080
+
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 10s
+          routes:
+            - id: links-api
+              uri: http://${LINK_SERVICE_HOST:link-service}:${LINK_SERVICE_PORT:8082}
+              predicates:
+                - Path=/links/**
+
+            - id: analytics-api
+              uri: http://${ANALYTICS_SERVICE_HOST:analytics-service}:${ANALYTICS_SERVICE_PORT:8083}
+              predicates:
+                - Path=/analytics/**
+
+            - id: webhooks-api
+              uri: http://${WEBHOOK_SERVICE_HOST:webhook-service}:${WEBHOOK_SERVICE_PORT:8084}
+              predicates:
+                - Path=/webhooks/**
+
+            # Public redirect: GET /{shortCode}. Must be the LAST route — single-segment
+            # paths that did not match any earlier prefix fall through to link-service.
+            # Long-form Path predicate avoids the regex {1,50} comma being parsed as a
+            # shortcut-form argument separator.
+            - id: redirect
+              uri: http://${LINK_SERVICE_HOST:link-service}:${LINK_SERVICE_PORT:8082}
+              predicates:
+                - name: Path
+                  args:
+                    pattern: "/{shortCode:[A-Za-z0-9_-]{1,50}}"
+                - Method=GET
+              metadata:
+                public: true
+
+gateway:
+  jwt:
+    public-key-path: ${GATEWAY_JWT_PUBLIC_KEY_PATH:file:/run/secrets/auth-jwt/public.pem}
+    issuer: smart-url-hub-auth

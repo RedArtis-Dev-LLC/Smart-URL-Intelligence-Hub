@@ -1,0 +1,12 @@
+package com.smarturl.hub.gateway.security;
+
+public class TokenInvalidException extends RuntimeException {
+
+    public TokenInvalidException(String message) {
+        super(message);
+    }
+
+    public TokenInvalidException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
