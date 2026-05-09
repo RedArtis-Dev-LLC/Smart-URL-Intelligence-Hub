@@ -55,6 +55,10 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
 
         return redisTemplate.hasKey(REVOKED_KEY_PREFIX + parsed.jti())
                 .defaultIfEmpty(Boolean.FALSE)
+                .onErrorResume(ex -> {
+                    log.error("Redis revocation check failed, denying request (fail-closed): {}", ex.getMessage());
+                    return Mono.just(Boolean.TRUE);
+                })
                 .flatMap(revoked -> {
                     if (Boolean.TRUE.equals(revoked)) {
                         return unauthorized(exchange, "Token has been revoked");

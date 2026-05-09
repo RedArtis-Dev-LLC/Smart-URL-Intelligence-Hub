@@ -55,6 +55,9 @@ public class JwtService {
                     .parseSignedClaims(token)
                     .getPayload();
 
+            if (claims.getSubject() == null || claims.getId() == null || claims.getExpiration() == null) {
+                throw new TokenInvalidException("Token is missing required claims");
+            }
             UUID userId = UUID.fromString(claims.getSubject());
             UUID jti = UUID.fromString(claims.getId());
             String email = claims.get("email", String.class);

@@ -10,6 +10,13 @@ spring:
             connect-timeout: 2000
             response-timeout: 10s
           routes:
+            - id: auth-api
+              uri: http://${AUTH_SERVICE_HOST:auth-service}:${AUTH_SERVICE_PORT:8081}
+              predicates:
+                - Path=/auth/**
+              metadata:
+                public: true
+
             - id: links-api
               uri: http://${LINK_SERVICE_HOST:link-service}:${LINK_SERVICE_PORT:8082}
               predicates:

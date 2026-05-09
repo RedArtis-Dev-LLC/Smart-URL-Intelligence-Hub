@@ -41,7 +41,7 @@ public class RefreshTokenService {
 
     @Transactional
     public RotationResult rotate(String rawToken) {
-        RefreshToken existing = repository.findByTokenHash(hash(rawToken))
+        RefreshToken existing = repository.findByTokenHashForUpdate(hash(rawToken))
                 .orElseThrow(() -> new TokenInvalidException("Refresh token not recognised"));
 
         if (existing.isRevoked()) {
