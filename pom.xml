@@ -46,7 +46,7 @@
         <assertj.version>3.27.0</assertj.version>
 
         <jacoco.version>0.8.13</jacoco.version>
-        <sonar-maven-plugin.version>5.1.0.4751</sonar-maven-plugin.version>
+        <sonar-maven-plugin.version>5.6.0.6792</sonar-maven-plugin.version>
 
         <sonar.host.url>http://localhost:9000</sonar.host.url>
         <sonar.projectKey>smart-url-hub-${project.artifactId}</sonar.projectKey>
@@ -54,28 +54,10 @@
         <sonar.java.source>${java.version}</sonar.java.source>
         <sonar.java.target>${java.version}</sonar.java.target>
         <sonar.sourceEncoding>UTF-8</sonar.sourceEncoding>
-        <sonar.coverage.jacoco.xmlReportPaths>
-            ${project.basedir}/target/site/jacoco/jacoco.xml,
-            ${project.basedir}/target/site/jacoco-it/jacoco.xml
-        </sonar.coverage.jacoco.xmlReportPaths>
-        <sonar.coverage.exclusions>
-            **/*Application.java,
-            **/config/**,
-            **/dto/**,
-            **/entity/**,
-            **/model/**,
-            **/exception/**
-        </sonar.coverage.exclusions>
-        <sonar.cpd.exclusions>
-            **/dto/**,
-            **/entity/**,
-            **/model/**
-        </sonar.cpd.exclusions>
-        <sonar.exclusions>
-            **/target/**,
-            **/generated-sources/**,
-            **/*Application.java
-        </sonar.exclusions>
+        <sonar.coverage.jacoco.xmlReportPaths>${project.basedir}/target/site/jacoco/jacoco.xml,${project.basedir}/target/site/jacoco-it/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+        <sonar.coverage.exclusions>**/*Application.java,**/config/**,**/dto/**,**/entity/**,**/model/**,**/exception/**</sonar.coverage.exclusions>
+        <sonar.cpd.exclusions>**/dto/**,**/entity/**,**/model/**</sonar.cpd.exclusions>
+        <sonar.exclusions>**/target/**,**/generated-sources/**</sonar.exclusions>
     </properties>
 
     <dependencyManagement>

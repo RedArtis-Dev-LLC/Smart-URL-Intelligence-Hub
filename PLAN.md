@@ -274,7 +274,7 @@ ip, country, city, deviceType, os, browser, referrer
 | CI                    | GitHub Actions                                            |
 | Testing               | JUnit 5, Testcontainers, WireMock, AssertJ                |
 | Coverage              | JaCoCo (per-module reports)                               |
-| Code quality          | SonarQube 25 Community (local docker-compose) + sonar-maven-plugin — one Sonar project per service |
+| Code quality          | SonarQube 26.2 Community (local docker-compose) + sonar-maven-plugin — one Sonar project per service |
 | Geo / UA parsing      | ip-api.com HTTP call (WireMocked in tests)                |
 
 ---
@@ -310,7 +310,7 @@ Key principles:
 
 ### 5.1 Code Quality (SonarQube)
 
-Code quality is enforced by a local SonarQube 25 Community server defined in
+Code quality is enforced by a local SonarQube 26.2 Community server defined in
 `docker/docker-compose.yml` under the `sonar` Docker Compose profile (so it does not
 start by default — `docker compose --profile sonar up -d sonarqube` to launch).
 
@@ -631,7 +631,7 @@ Key points:
   1. Checkout with `fetch-depth: 0` — Sonar needs full git history for accurate
      new-code detection and blame.
   2. Set up Java 25 and cache `~/.m2/repository` and `~/.sonar/cache`.
-  3. Start a SonarQube service container (`sonarqube:25-community` + a Postgres
+  3. Start a SonarQube service container (`sonarqube:26.2.0.119303-community` + a Postgres
      service container) so the scan does not depend on any external host. Wait for
      `/api/system/status` to report `UP`, then bootstrap a global analysis token via
      the Sonar Web API (using the default `admin`/`admin` credentials, then changing

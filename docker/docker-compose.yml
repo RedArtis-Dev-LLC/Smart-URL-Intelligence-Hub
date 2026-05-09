@@ -167,7 +167,7 @@ services:
       retries: 10
 
   sonarqube:
-    image: sonarqube:25-community
+    image: sonarqube:26.2.0.119303-community
     container_name: hub-sonarqube
     restart: unless-stopped
     depends_on:
