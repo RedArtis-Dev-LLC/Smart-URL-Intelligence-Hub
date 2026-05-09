@@ -1,0 +1,62 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-links
+      author: smart-url-hub
+      changes:
+        - createTable:
+            tableName: links
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: original_url
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: short_code
+                  type: VARCHAR(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: custom_slug
+                  type: VARCHAR(50)
+              - column:
+                  name: expires_at
+                  type: TIMESTAMP
+              - column:
+                  name: max_clicks
+                  type: BIGINT
+              - column:
+                  name: click_count
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: is_active
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false

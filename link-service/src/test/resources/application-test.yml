@@ -1,12 +1,11 @@
-server:
-  port: 8082
-
 spring:
-  datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/links_db
-    username: ${POSTGRES_USER}
-    password: ${POSTGRES_PASSWORD}
-    driver-class-name: org.postgresql.Driver
+  application:
+    name: link-service
+  cloud:
+    config:
+      enabled: false
+  config:
+    import: ""
   jpa:
     open-in-view: false
     hibernate:
@@ -16,6 +15,14 @@ spring:
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
+management:
+  tracing:
+    enabled: false
+  zipkin:
+    tracing:
+      export:
+        enabled: false
+
 link:
   short-code:
     length: 7
@@ -23,7 +30,7 @@ link:
   redirect:
     max-optimistic-lock-retries: 3
   outbox:
-    poll-interval-ms: 2000
+    poll-interval-ms: 500
     batch-size: 50
     cleanup-cron: "0 0 3 * * *"
     retention-period: 7d

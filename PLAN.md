@@ -380,7 +380,7 @@ $env:SONAR_TOKEN = "<token>"
 - [x] Stage 3 — common-lib Module
 - [x] Stage 4 — Auth Service
 - [x] Stage 5 — API Gateway
-- [ ] Stage 6 — Link Service
+- [x] Stage 6 — Link Service
 - [ ] Stage 7 — Analytics Service
 - [ ] Stage 8 — Webhook Service
 - [ ] Stage 9 — Docker Compose Integration & Final Wiring

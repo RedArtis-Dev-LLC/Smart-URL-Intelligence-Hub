@@ -1,0 +1,24 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-idx-links-user-id
+      author: smart-url-hub
+      changes:
+        - createIndex:
+            indexName: idx_links_user_id
+            tableName: links
+            columns:
+              - column:
+                  name: user_id
+
+  - changeSet:
+      id: 003-idx-outbox-published-created
+      author: smart-url-hub
+      changes:
+        - createIndex:
+            indexName: idx_outbox_published_created
+            tableName: outbox_events
+            columns:
+              - column:
+                  name: published
+              - column:
+                  name: created_at
