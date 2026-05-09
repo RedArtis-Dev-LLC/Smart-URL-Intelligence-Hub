@@ -20,6 +20,11 @@ public class GatewayApiUtils {
         return restTemplate.exchange(path, HttpMethod.GET, new HttpEntity<>(bearerHeaders(accessToken)), String.class);
     }
 
+    public static ResponseEntity<String> getWithHeaders(
+            String path, HttpHeaders headers, TestRestTemplate restTemplate) {
+        return restTemplate.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+    }
+
     public static ResponseEntity<String> getNoAuth(String path, TestRestTemplate restTemplate) {
         return restTemplate.getForEntity(path, String.class);
     }

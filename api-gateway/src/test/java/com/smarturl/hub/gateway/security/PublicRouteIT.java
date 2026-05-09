@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.smarturl.hub.gateway.AbstractIntegrationTest;
 import com.smarturl.hub.gateway.security.utils.GatewayApiUtils;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 
 class PublicRouteIT extends AbstractIntegrationTest {
@@ -49,5 +50,31 @@ class PublicRouteIT extends AbstractIntegrationTest {
         var received = wireMockServer.findAll(getRequestedFor(urlEqualTo(GatewayApiUtils.REDIRECT_PROBE_PATH)));
         assertThat(received).hasSize(1);
         assertThat(received.getFirst().getHeaders().getHeader(GatewayHeaders.USER_ID).isPresent()).isFalse();
+    }
+
+    @Test
+    void redirect_publicRoute_spoofedIdentityHeadersAreStripped() {
+        //given
+        wireMockServer.stubFor(get(urlEqualTo(GatewayApiUtils.REDIRECT_PROBE_PATH))
+                .willReturn(aResponse().withStatus(HttpStatus.OK.value()).withBody("forwarded")));
+
+        var headers = new HttpHeaders();
+        headers.set(GatewayHeaders.USER_ID, "spoofed-id");
+        headers.set(GatewayHeaders.USER_EMAIL, "spoofed@evil.com");
+        headers.set(GatewayHeaders.USER_ROLES, "ROLE_ADMIN");
+
+        //when
+        var response = GatewayApiUtils.getWithHeaders(
+                GatewayApiUtils.REDIRECT_PROBE_PATH, headers, restTemplate);
+
+        //then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        var received = wireMockServer.findAll(getRequestedFor(urlEqualTo(GatewayApiUtils.REDIRECT_PROBE_PATH)));
+        assertThat(received).hasSize(1);
+        var receivedHeaders = received.getFirst().getHeaders();
+        assertThat(receivedHeaders.getHeader(GatewayHeaders.USER_ID).isPresent()).isFalse();
+        assertThat(receivedHeaders.getHeader(GatewayHeaders.USER_EMAIL).isPresent()).isFalse();
+        assertThat(receivedHeaders.getHeader(GatewayHeaders.USER_ROLES).isPresent()).isFalse();
     }
 }

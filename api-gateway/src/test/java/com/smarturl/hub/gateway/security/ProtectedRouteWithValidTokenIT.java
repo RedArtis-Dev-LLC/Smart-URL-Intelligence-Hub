@@ -11,6 +11,7 @@ import com.smarturl.hub.gateway.security.utils.GatewayApiUtils;
 import com.smarturl.hub.gateway.security.utils.JwtTestUtils;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 
 class ProtectedRouteWithValidTokenIT extends AbstractIntegrationTest {
@@ -55,6 +56,38 @@ class ProtectedRouteWithValidTokenIT extends AbstractIntegrationTest {
         assertThat(received).hasSize(1);
         assertThat(received.getFirst().getHeaders().getHeader(GatewayHeaders.USER_ID).firstValue())
                 .isEqualTo(userId.toString());
+    }
+
+    @Test
+    void linksRoute_validToken_spoofedHeadersAreReplacedByTokenClaims() {
+        //given
+        var realUserId = UUID.randomUUID();
+        var realEmail = "real@example.com";
+        var token = JwtTestUtils.issueValidToken(realUserId, realEmail, testRsaKeyPair.privateKey());
+        wireMockServer.stubFor(get(urlEqualTo(GatewayApiUtils.LINKS_PROBE_PATH))
+                .willReturn(aResponse().withStatus(HttpStatus.OK.value())));
+
+        var headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.set(GatewayHeaders.USER_ID, "spoofed-id");
+        headers.set(GatewayHeaders.USER_EMAIL, "spoofed@evil.com");
+        headers.set(GatewayHeaders.USER_ROLES, "ROLE_ADMIN");
+
+        //when
+        var response = GatewayApiUtils.getWithHeaders(GatewayApiUtils.LINKS_PROBE_PATH, headers, restTemplate);
+
+        //then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        var received = wireMockServer.findAll(getRequestedFor(urlEqualTo(GatewayApiUtils.LINKS_PROBE_PATH)));
+        assertThat(received).hasSize(1);
+        var receivedHeaders = received.getFirst().getHeaders();
+        assertThat(receivedHeaders.getHeader(GatewayHeaders.USER_ID).firstValue())
+                .isEqualTo(realUserId.toString());
+        assertThat(receivedHeaders.getHeader(GatewayHeaders.USER_EMAIL).firstValue())
+                .isEqualTo(realEmail);
+        assertThat(receivedHeaders.getHeader(GatewayHeaders.USER_ROLES).firstValue())
+                .doesNotContain("ROLE_ADMIN");
     }
 
     @Test

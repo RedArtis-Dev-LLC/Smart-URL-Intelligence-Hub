@@ -33,7 +33,7 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         if (isPublicRoute(exchange)) {
-            return chain.filter(exchange);
+            return chain.filter(stripIdentityHeaders(exchange));
         }
 
         String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
@@ -76,9 +76,24 @@ public class JwtAuthenticationGlobalFilter implements GlobalFilter, Ordered {
         return Boolean.TRUE.equals(route.getMetadata().get(PUBLIC_METADATA_KEY));
     }
 
+    private static ServerWebExchange stripIdentityHeaders(ServerWebExchange exchange) {
+        return exchange.mutate()
+                .request(builder -> builder.headers(h -> {
+                    h.remove(GatewayHeaders.USER_ID);
+                    h.remove(GatewayHeaders.USER_EMAIL);
+                    h.remove(GatewayHeaders.USER_ROLES);
+                }))
+                .build();
+    }
+
     private static ServerWebExchange injectIdentityHeaders(ServerWebExchange exchange, ParsedToken parsed) {
         return exchange.mutate()
                 .request(builder -> builder
+                        .headers(h -> {
+                            h.remove(GatewayHeaders.USER_ID);
+                            h.remove(GatewayHeaders.USER_EMAIL);
+                            h.remove(GatewayHeaders.USER_ROLES);
+                        })
                         .header(GatewayHeaders.USER_ID, parsed.userId().toString())
                         .header(GatewayHeaders.USER_EMAIL, parsed.email() == null ? "" : parsed.email())
                         .header(GatewayHeaders.USER_ROLES, String.join(",", parsed.roles())))
