@@ -1,0 +1,7 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/001-create-links.yaml
+  - include:
+      file: db/changelog/002-create-outbox-events.yaml
+  - include:
+      file: db/changelog/003-add-links-indexes.yaml

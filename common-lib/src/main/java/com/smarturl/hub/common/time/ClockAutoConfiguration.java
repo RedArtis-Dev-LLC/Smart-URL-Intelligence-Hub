@@ -1,12 +1,12 @@
-package com.smarturl.hub.auth.config;
+package com.smarturl.hub.common.time;
 
 import java.time.Clock;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
-@Configuration
-public class TimeConfig {
+@AutoConfiguration
+public class ClockAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean

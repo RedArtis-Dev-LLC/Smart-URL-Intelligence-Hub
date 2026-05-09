@@ -1,2 +1,3 @@
 com.smarturl.hub.common.security.HeaderAuthSecurityAutoConfiguration
 com.smarturl.hub.common.error.ErrorHandlingAutoConfiguration
+com.smarturl.hub.common.time.ClockAutoConfiguration
