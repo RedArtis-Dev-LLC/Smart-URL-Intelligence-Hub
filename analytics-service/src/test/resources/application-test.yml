@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: analytics-service
+  cloud:
+    config:
+      enabled: false
+    openfeign:
+      lazy-attributes-resolution: true
+  config:
+    import: ""
+  data:
+    mongodb:
+      auto-index-creation: true
+
+management:
+  tracing:
+    enabled: false
+  zipkin:
+    tracing:
+      export:
+        enabled: false
+
+analytics:
+  amqp:
+    click-events-exchange: click.events
+    click-events-routing-key: click.event
+    click-events-queue: analytics.click.queue
+    click-events-dlq: analytics.click.dlq
+    threshold-exchange: threshold.reached
+    threshold-routing-key: threshold.reached
+  redis:
+    click-total-prefix: "click:total:"
+    click-unique-prefix: "click:uniq:"

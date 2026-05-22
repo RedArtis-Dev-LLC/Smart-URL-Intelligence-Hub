@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: analytics-service
+  config:
+    import: "optional:configserver:http://${CONFIG_SERVER_HOST:config-server}:${CONFIG_SERVER_PORT:8888}"
+  cloud:
+    config:
+      fail-fast: true
