@@ -10,3 +10,29 @@ spring:
       username: ${MONGO_INITDB_ROOT_USERNAME}
       password: ${MONGO_INITDB_ROOT_PASSWORD}
       authentication-database: admin
+      auto-index-creation: true
+  cloud:
+    openfeign:
+      lazy-attributes-resolution: true
+      client:
+        config:
+          default:
+            connect-timeout: 2000
+            read-timeout: 5000
+            logger-level: BASIC
+
+analytics:
+  amqp:
+    click-events-exchange: click.events
+    click-events-routing-key: click.event
+    click-events-queue: analytics.click.queue
+    click-events-dlq: analytics.click.dlq
+    threshold-exchange: threshold.reached
+    threshold-routing-key: threshold.reached
+  geo:
+    base-url: ${IP_API_URL:http://ip-api.com}
+  webhook-service:
+    base-url: ${WEBHOOK_SERVICE_URL:http://webhook-service:8084}
+  redis:
+    click-total-prefix: "click:total:"
+    click-unique-prefix: "click:uniq:"
