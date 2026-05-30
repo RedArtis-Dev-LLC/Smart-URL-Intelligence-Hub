@@ -1,6 +1,5 @@
 package com.smarturl.hub.analytics.mocks;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.smarturl.hub.analytics.feign.geo.GeoLookupResponse;
@@ -8,6 +7,7 @@ import java.util.function.Consumer;
 import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 import org.springframework.http.HttpStatus;
+import tools.jackson.databind.ObjectMapper;
 
 @UtilityClass
 public class GeoApiMocks {

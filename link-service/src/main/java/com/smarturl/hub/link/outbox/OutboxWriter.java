@@ -1,7 +1,5 @@
 package com.smarturl.hub.link.outbox;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
@@ -9,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 @Component
 @RequiredArgsConstructor
@@ -22,23 +21,14 @@ public class OutboxWriter {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void write(UUID aggregateId, String eventType, Object payload) {
-        String json = serialize(payload);
         OutboxEvent event = OutboxEvent.builder()
                 .id(UUID.randomUUID())
                 .aggregateId(aggregateId)
                 .eventType(eventType)
-                .payload(json)
+                .payload(objectMapper.writeValueAsString(payload))
                 .published(false)
                 .createdAt(Instant.now(clock))
                 .build();
         repository.save(event);
-    }
-
-    private String serialize(Object payload) {
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Failed to serialize outbox payload", e);
-        }
     }
 }
