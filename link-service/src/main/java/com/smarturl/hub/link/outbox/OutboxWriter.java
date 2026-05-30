@@ -1,6 +1,5 @@
 package com.smarturl.hub.link.outbox;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
@@ -24,7 +23,6 @@ public class OutboxWriter {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void write(UUID aggregateId, String eventType, Object payload) {
-        log.info("Outbox triggered");
         OutboxEvent event = OutboxEvent.builder()
                 .id(UUID.randomUUID())
                 .aggregateId(aggregateId)
