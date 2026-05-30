@@ -1,11 +1,11 @@
 package com.smarturl.hub.link.outbox;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,8 +20,9 @@ public class OutboxWriter {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
+    @SneakyThrows
     @Transactional(propagation = Propagation.MANDATORY)
-    public void write(UUID aggregateId, String eventType, Object payload) throws JsonProcessingException {
+    public void write(UUID aggregateId, String eventType, Object payload) {
         OutboxEvent event = OutboxEvent.builder()
                 .id(UUID.randomUUID())
                 .aggregateId(aggregateId)
