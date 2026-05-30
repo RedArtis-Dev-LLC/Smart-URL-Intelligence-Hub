@@ -13,14 +13,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Least-privilege token: pure-read for everything. SonarCloud's GitHub App
-# handles PR decoration server-side, so we don't need pull-requests: write.
-permissions:
-  contents: read
-  pull-requests: read
-  checks: read
-  actions: read
-
 env:
   JAVA_VERSION: '25'
   JAVA_DISTRIBUTION: temurin
@@ -35,6 +27,8 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,6 +53,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     timeout-minutes: 30
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -84,7 +80,9 @@ jobs:
 
       - name: Run unit + integration tests
         timeout-minutes: 25
-        run: ./mvnw $MAVEN_CLI_OPTS -pl ${{ matrix.module }} -am verify
+        env:
+          MODULE: ${{ matrix.module }}
+        run: ./mvnw $MAVEN_CLI_OPTS -pl "$MODULE" -am verify
 
       - name: Upload module output (coverage + classes + reports)
         if: always()
@@ -114,11 +112,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: always()
+    permissions:
+      contents: read
     steps:
       - name: Fail if any matrix leg failed
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
         run: |
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "::error::test matrix did not pass (result: ${{ needs.test.result }})"
+          if [ "$TEST_RESULT" != "success" ]; then
+            echo "::error::test matrix did not pass (result: $TEST_RESULT)"
             exit 1
           fi
 
@@ -132,6 +134,8 @@ jobs:
     needs: tests-passed
     if: ${{ vars.SONAR_ORGANIZATION != '' }}
     timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -159,8 +163,17 @@ jobs:
           merge-multiple: true
 
       - name: Run SonarCloud scan (aggregated, parent reactor)
+        # PR-author-controllable values (head_ref, base_ref, etc.) MUST pass
+        # through `env:` and be referenced as shell vars, never interpolated
+        # directly into the `run:` script — otherwise a malicious branch name
+        # could inject arbitrary commands (CWE-94).
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REF: ${{ github.head_ref }}
+          PR_BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
 
@@ -169,11 +182,11 @@ jobs:
           # On push to main, we omit these so the full branch is analyzed
           # and becomes the new baseline.
           PR_ARGS=()
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
             PR_ARGS=(
-              "-Dsonar.pullrequest.key=${{ github.event.pull_request.number }}"
-              "-Dsonar.pullrequest.branch=${{ github.head_ref }}"
-              "-Dsonar.pullrequest.base=${{ github.base_ref }}"
+              "-Dsonar.pullrequest.key=$PR_NUMBER"
+              "-Dsonar.pullrequest.branch=$PR_HEAD_REF"
+              "-Dsonar.pullrequest.base=$PR_BASE_REF"
             )
           fi
 
@@ -185,7 +198,7 @@ jobs:
           # artifacts are untouched (no `clean`, no test re-run).
           ./mvnw $MAVEN_CLI_OPTS install sonar:sonar -DskipTests \
             -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} \
-            -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.organization="$SONAR_ORGANIZATION" \
+            -Dsonar.token="$SONAR_TOKEN" \
             -Dsonar.qualitygate.wait=true \
             "${PR_ARGS[@]}"
