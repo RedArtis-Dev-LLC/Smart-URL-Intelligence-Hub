@@ -308,26 +308,42 @@ Key principles:
   containers not started — configure Zipkin reporter to a no-op or WireMock stub.
   At least one test per service asserts that `traceId` is present in log output.
 
-### 5.1 Code Quality (SonarQube)
+### 5.1 Code Quality (SonarCloud)
 
-Code quality is enforced by a local SonarQube 26.2 Community server defined in
-`docker/docker-compose.yml` under the `sonar` Docker Compose profile (so it does not
-start by default — `docker compose --profile sonar up -d sonarqube` to launch).
+Code quality is enforced by **SonarCloud** in CI (`sonarcloud.io`), with a
+persistent baseline per branch so the "new-code" leak period is meaningful.
+For local one-off scans against a self-hosted SonarQube 26 the project also
+defines a `sonar` Docker Compose profile (`docker compose --profile sonar up -d
+sonarqube`) — same Maven invocation, just override `-Dsonar.host.url`.
 
-**One Sonar project per service.** Each Maven module is scanned independently and
-appears as its own project in the SonarQube UI, so you can open a single service in
-isolation. The project key is derived in the parent POM as
-`smart-url-hub-${project.artifactId}` and the project name as `${project.artifactId}`,
-so scanning a module with `-pl <module>` automatically produces a uniquely-keyed
-Sonar project (e.g., `smart-url-hub-auth-service`,
-`smart-url-hub-link-service`).
+**One Sonar project for the whole monorepo.** A single aggregated scan runs
+at the parent reactor level, so every module's sources, issues, coverage, and
+duplication land in one SonarCloud project (`<org-slug>_smart-url-hub`).
+Drilling into a specific service is done via SonarCloud's directory facets
+(filter by `auth-service/`, `link-service/`, etc.) — no separate project per
+module to maintain.
+
+The project key is composed in the parent POM:
+
+```
+sonar.projectKey = ${sonar.organization}_smart-url-hub
+```
+
+When the monorepo is eventually split into one repo per service (see
+[Stage 11](#stage-11--migrate-monorepo-to-repo-per-service)), each repo gets
+its own Sonar project automatically.
 
 Coverage is produced per-module by JaCoCo: each module emits `target/jacoco.exec`
 (unit, via `prepare-agent`) and `target/jacoco-it.exec` (integration, via
 `prepare-agent-integration`). The `report` and `report-integration` goals fire in
 the `test` and `verify` phases and write
-`target/site/jacoco/jacoco.xml` and `target/site/jacoco-it/jacoco.xml`. Sonar reads
-both files via `sonar.coverage.jacoco.xmlReportPaths` declared in the parent POM.
+`target/site/jacoco/jacoco.xml` and `target/site/jacoco-it/jacoco.xml`. Sonar
+reads all module reports via a glob in the parent POM:
+
+```
+sonar.coverage.jacoco.xmlReportPaths = **/target/site/jacoco/jacoco.xml,
+                                       **/target/site/jacoco-it/jacoco.xml
+```
 
 The Sonar scan covers (per service):
 
@@ -348,30 +364,38 @@ them):
 `**/*Application.java`, `**/config/**`, `**/dto/**`, `**/entity/**`, `**/model/**`,
 `**/exception/**`.
 
-Local usage:
+Local usage — single aggregated scan against SonarCloud:
+
+```powershell
+$env:SONAR_TOKEN = "<your-sonarcloud-token>"
+$ORG = "<your-sonarcloud-org-slug>"
+
+# Build + tests so every module's jacoco XML exists, then scan once at
+# the parent level (no -pl / -f — must include the full reactor):
+./mvnw verify
+./mvnw sonar:sonar `
+    "-Dsonar.organization=$ORG" `
+    "-Dsonar.token=$env:SONAR_TOKEN"
+```
+
+Local usage — single aggregated scan against self-hosted SonarQube (offline):
 
 ```powershell
 docker compose --profile sonar up -d sonarqube
-# First login at http://localhost:9000 — admin / admin, force password change, then
-# create a global analysis token under My Account > Security.
+# First login at http://localhost:9000 — admin / admin, force password change,
+# then create a global analysis token under My Account > Security.
 $env:SONAR_TOKEN = "<token>"
 
-# Build everything once so all jacoco XMLs exist:
 ./mvnw verify
-
-# Scan one service in isolation. Use `-f <module>/pom.xml`, not `-pl <module>`:
-# sonar-maven-plugin 5.x requires the scanned module to be Maven's execution
-# root, which `-pl` does not satisfy (it leaves the parent as the execution
-# root and the plugin then fails with "Maven session does not declare a top
-# level project").
-./mvnw -f auth-service/pom.xml sonar:sonar "-Dsonar.token=$env:SONAR_TOKEN"
-
-# Or scan every service in turn (each creates / updates its own Sonar project):
-"common-lib","config-server","auth-service","api-gateway","link-service",`
-    "analytics-service","webhook-service" | ForEach-Object {
-    ./mvnw -f "$_/pom.xml" sonar:sonar "-Dsonar.token=$env:SONAR_TOKEN"
-}
+./mvnw sonar:sonar `
+    "-Dsonar.host.url=http://localhost:9000" `
+    "-Dsonar.organization=local" `
+    "-Dsonar.token=$env:SONAR_TOKEN"
 ```
+
+Formatting is also enforced — `mvn verify` runs Spotless's `check` goal
+(palantirJavaFormat, import ordering, unused-import removal). Fix violations
+with `./mvnw spotless:apply`.
 
 ---
 
@@ -389,6 +413,7 @@ $env:SONAR_TOKEN = "<token>"
 - [ ] Stage 8 — Webhook Service
 - [ ] Stage 9 — Docker Compose Integration & Final Wiring
 - [x] Stage 10 — CI Pipeline
+- [ ] Stage 11 — Migrate Monorepo to Repo-per-Service
 
 ---
 
@@ -627,49 +652,210 @@ webhook delivery visible → distributed trace visible in Zipkin UI.
 
 ### Stage 10 — CI Pipeline
 
-Create a GitHub Actions workflow at `.github/workflows/ci.yml`.
+The CI surface is split across three workflows under `.github/workflows/` plus
+a Dependabot config under `.github/`:
 
-Key points:
-- Trigger on push and pull request to `main`.
-- Single job with the following steps:
-  1. Checkout with `fetch-depth: 0` — Sonar needs full git history for accurate
-     new-code detection and blame.
-  2. Set up Java 25 and cache `~/.m2/repository` and `~/.sonar/cache`.
-  3. Start a SonarQube service container (`sonarqube:26.2.0.119303-community` + a Postgres
-     service container) so the scan does not depend on any external host. Wait for
-     `/api/system/status` to report `UP`, then bootstrap a global analysis token via
-     the Sonar Web API (using the default `admin`/`admin` credentials, then changing
-     the password) and export it as `SONAR_TOKEN` for subsequent steps.
-  4. Run `./mvnw verify` — compiles all modules, runs unit + integration tests,
-     emits per-module `jacoco.exec` / `jacoco-it.exec` and the corresponding XML
-     reports.
-  5. Scan each service module in turn so each one creates / updates its own Sonar
-     project. Recommended pattern: a GitHub Actions matrix job (one entry per
-     module: `common-lib`, `config-server`, `auth-service`, `api-gateway`,
-     `link-service`, `analytics-service`, `webhook-service`) running
-     `./mvnw -f ${{ matrix.module }}/pom.xml sonar:sonar
-     -Dsonar.host.url=http://localhost:9000
-     -Dsonar.token=$SONAR_TOKEN
-     -Dsonar.qualitygate.wait=true`. (Use `-f <module>/pom.xml` rather than
-     `-pl <module>` — sonar-maven-plugin 5.x requires the scanned module to be
-     Maven's execution root, which `-pl` does not satisfy.) A matrix is preferable to a shell loop because
-     each service's gate failure is reported as a separate failed job rather than
-     short-circuiting the rest. Alternative if a matrix is overkill: a single shell
-     loop that records each module's gate result and fails the job at the end if any
-     failed.
-- The `qualitygate.wait` flag makes the Maven invocation fail when the Sonar Way
-  gate fails for that service (coverage <80% on new code, new bugs, new
-  vulnerabilities, unreviewed hotspots, etc.).
-- Testcontainers requires Docker — GitHub Actions runners have Docker available by
-  default; no extra setup needed.
-- The bootstrap `SONAR_TOKEN` is generated at runtime, so the workflow does not
-  require any pre-provisioned repository secret.
-- If any module's tests fail OR any service's Sonar quality gate fails, the workflow
-  fails.
+- `ci.yml` — build, format check, tests, SonarCloud quality gate.
+- `codeql.yml` — GitHub CodeQL SAST (Java).
+- `dependabot.yml` — weekly grouped dependency PRs (Maven, Actions, Docker).
 
-**Done when:** a push to `main` triggers the workflow, all tests pass, every
-service's Sonar quality gate passes, and each service appears as its own project in
-the SonarQube UI.
+#### Pipeline structure (`ci.yml`)
+
+Trigger: push to `main`, PR to `main`, manual via `workflow_dispatch`.
+
+```
+build  ──┐
+         ├──► test (matrix × 7 modules) ──► tests-passed ──► sonar (single aggregated)
+format ──┘
+```
+
+- **Concurrency:** `cancel-in-progress` only on PRs, so pushes to `main` finish
+  and produce the required status checks.
+- **Permissions:** least-privilege — `contents: read`, everything else read or
+  unset. SonarCloud's GitHub App decorates PRs server-side, so no write needed.
+- **Java pinning:** `JAVA_VERSION: '25'` via `actions/setup-java@v4` (temurin).
+- **`build`** — `./mvnw install -DskipTests`. Fast-fail compile check; primes
+  the setup-java Maven cache for the matrix legs.
+- **`format`** — `./mvnw spotless:check`. Runs in parallel with build (no
+  dependency).
+- **`test`** — matrix job, one runner per module, `./mvnw -pl <module> -am
+  verify`. Uploads `module-output-<module>` artifact with target/classes,
+  jacoco XMLs, and surefire/failsafe reports for the sonar job.
+- **`tests-passed`** — empty aggregator job, used as the single required check
+  for branch protection (stable name regardless of matrix shape).
+- **`sonar`** — single job (no matrix) gated on `vars.SONAR_ORGANIZATION != ''`
+  (skipped if SonarCloud is not configured yet). Downloads all module-output-*
+  artifacts (merged into the workspace), runs ONE aggregated scan from the
+  parent reactor:
+  `./mvnw install sonar:sonar -DskipTests -Dsonar.qualitygate.wait=true`.
+  On `pull_request` events the workflow also passes:
+  - `-Dsonar.pullrequest.key=<PR-number>`
+  - `-Dsonar.pullrequest.branch=<head ref>`
+  - `-Dsonar.pullrequest.base=<base ref>`
+  so SonarCloud analyzes the PR diff and reports against the persistent main
+  baseline — the "new code" view.
+
+#### CodeQL (`codeql.yml`)
+
+`github/codeql-action@v3` with `languages: java-kotlin`, `build-mode: manual`,
+`queries: security-and-quality`. Runs on push, PR, and weekly schedule.
+Findings appear in the **Security → Code scanning** tab.
+
+#### Dependabot (`.github/dependabot.yml`)
+
+Weekly PRs against Maven, GitHub Actions, and Docker ecosystems. Updates are
+**grouped** (Spring Boot, Spring Framework, Spring Cloud, Jackson, testing,
+observability, etc.) to prevent PR floods.
+
+#### One-time setup (developer)
+
+1. Sign in to https://sonarcloud.io with GitHub; install the SonarCloud GitHub
+   App on the org. Create / sync the SonarCloud organization to match the
+   GitHub org.
+2. In SonarCloud, create ONE project with key `<org-slug>_smart-url-hub`
+   (display name `smart-url-hub`). Configure **Administration → New Code →
+   Reference branch → main** so PR analysis compares against `main` state.
+3. Generate a User Token under **My Account → Security**.
+4. In the GitHub repo: add **secret** `SONAR_TOKEN` and **variable**
+   `SONAR_ORGANIZATION = <org-slug>`.
+5. Run `./mvnw spotless:apply` once to format the existing code; commit the
+   result. From then on `mvn verify` enforces formatting.
+6. Configure branch protection on `main` to require the following status
+   checks: `Build`, `Format check`, `All tests passed`, `SonarCloud`,
+   `Analyze Java`.
+
+**Done when:** a push to `main` triggers the workflow, all tests pass, the
+SonarCloud quality gate passes (new-code view), CodeQL surfaces no new alerts,
+and PR decoration shows inline on PR conversations.
+
+---
+
+### Stage 11 — Migrate Monorepo to Repo-per-Service
+
+> **Why a separate stage:** the monorepo is intentional for the initial build
+> (single CI run, atomic refactors across services, simpler dev setup). Once
+> services stabilize and ownership boundaries solidify, repo-per-service
+> reduces blast radius, enables independent release cadences, and aligns
+> permission boundaries with team boundaries.
+
+#### 11.1 Target topology
+
+```
+github.com/<org>/
+├── smart-url-hub-common-lib       <- published Maven artifact
+├── smart-url-hub-config-server
+├── smart-url-hub-auth-service
+├── smart-url-hub-api-gateway
+├── smart-url-hub-link-service
+├── smart-url-hub-analytics-service
+├── smart-url-hub-webhook-service
+├── smart-url-hub-config           <- centralized config files (was config/ in monorepo)
+└── smart-url-hub-platform         <- meta-repo: docker-compose, README, runbooks, IaC
+```
+
+Each service repo contains only its module's source. `common-lib` becomes a
+versioned dependency pulled from a Maven registry (GitHub Packages by default,
+Maven Central if it ever becomes public).
+
+#### 11.2 Pre-migration prerequisites
+
+Before splitting, lock down anything that's currently implicit in the
+monorepo and would silently break in separate repos:
+
+- **`common-lib` is API-stable.** Public contracts (`AuthenticatedUser`,
+  `GatewayHeaders`, error response shapes, auto-config beans) must have a
+  versioning policy. Adopt semantic versioning. Breaking changes only on a
+  major bump.
+- **Feign client DTOs are duplicated, not shared.** Open Question #11 already
+  resolved this (per-consumer); confirm no service has crept toward a shared
+  contracts module.
+- **Database migration ownership is clear.** Each service owns its Liquibase
+  changelog; no cross-service migration writes.
+- **All shared infrastructure is parameterized.** Hostnames, ports, queue
+  names live in config-server YAML, not service code.
+- **Image tags follow `<service>:<semver>`** (Stage 9 should already produce
+  these).
+
+#### 11.3 Migration steps
+
+1. **Publish `common-lib` first.**
+   - Create the `smart-url-hub-common-lib` repo with the module's source
+     (`git filter-repo` preserves history; otherwise copy + initial commit).
+   - Add a release workflow (`.github/workflows/release.yml`) that publishes
+     to **GitHub Packages** on tag push (`v*.*.*`):
+     `./mvnw deploy -P release` with `<distributionManagement>` pointing at
+     `https://maven.pkg.github.com/<org>/smart-url-hub-common-lib`.
+   - Use **jReleaser** or **maven-release-plugin** for tagging + changelog.
+   - Cut `v1.0.0`.
+
+2. **Per service: extract repo, repoint dependency.**
+   For each service in order: `config-server`, `auth-service`, `api-gateway`,
+   `link-service`, `analytics-service`, `webhook-service`:
+   - `git filter-repo --path <module>/ --path-rename <module>/:` to keep
+     only that module's history.
+   - Push to `smart-url-hub-<service>` repo.
+   - Replace the `<dependency>` on local `common-lib` with the published
+     coordinates + a fixed version.
+   - Add a per-repo CI workflow (`ci.yml` cloned from monorepo's version,
+     simplified: no matrix — just build → test → sonar). Each service repo
+     gets its own SonarCloud project (`<org>_smart-url-hub-<service>`).
+   - Add Dependabot config covering Maven + Actions + Docker.
+   - Configure branch protection (same checks: Build, Format check, Tests,
+     SonarCloud, CodeQL).
+   - Mirror secrets (`SONAR_TOKEN`) and variables (`SONAR_ORGANIZATION`).
+
+3. **Move `config/` directory to its own repo.**
+   - Create `smart-url-hub-config` with the existing YAML files.
+   - Switch `config-server` from native filesystem backend to **Git backend**
+     pointing at this repo (Vault transition becomes a later step per
+     section 2.3).
+   - Permissions: services don't need access; only `config-server` reads it.
+
+4. **Stand up `smart-url-hub-platform` meta-repo.**
+   Holds:
+   - `docker/docker-compose.yml` referencing service images from a registry
+     (GHCR `ghcr.io/<org>/<service>:<tag>`).
+   - Root `README.md`, runbooks, ADRs.
+   - Integration smoke tests (the cross-service E2E walk from Stage 9).
+   - IaC if/when the project gets deployed targets (Terraform / Helm).
+
+5. **Cross-cutting CI in `platform` repo.**
+   - **Compatibility matrix workflow** — when any service repo pushes a new
+     image tag, the platform repo's workflow runs the full stack with that
+     tag pinned and runs the smoke test. Tools: `repository_dispatch`
+     events from each service repo trigger this workflow.
+   - **Renovate / Dependabot** for service image tag bumps in the
+     compose file.
+
+6. **Retire the monorepo.**
+   - Archive it; do not delete. Old PR/issue history stays accessible.
+   - Update the README to point at `smart-url-hub-platform`.
+
+#### 11.4 What gets harder, and the mitigations
+
+| Concern | Mitigation |
+|---|---|
+| Cross-service refactors (e.g. changing a Feign DTO) | Coordinated PRs; tag the dependency repo first, then bump consumers in series. Add a CHANGELOG entry on every common-lib release noting breaking changes. |
+| Local dev: standing up the full stack | The meta-repo's `docker-compose.yml` pulls all images from GHCR. For local code-edit-test, services support `docker-compose.override.yml` that bind-mounts a local clone of the service being edited. |
+| Discovering "where does X live?" | The meta-repo's README is the canonical index. Every service repo's README links back. |
+| Version skew between common-lib and services | Renovate config in each service repo auto-PRs common-lib bumps. CI catches incompatibilities. |
+| Atomic rollback | No longer possible cross-service. Each service's image tag is rolled back independently; the platform repo's pinned-versions file documents the previous known-good combination. |
+
+#### 11.5 Tools to evaluate before starting
+
+- **`git filter-repo`** — repo extraction with history preservation.
+- **jReleaser** or **maven-release-plugin** — automated tagging & artifact
+  publishing.
+- **Renovate** — finer-grained than Dependabot for service-image-tag updates
+  in the meta-repo compose file.
+- **Repository templates** — make `smart-url-hub-service-template` and use
+  it as the basis for each per-service repo (CI workflow, branch protection
+  ruleset config, Dependabot, common Makefile, etc.).
+
+**Done when:** every service repo is independently buildable, releasable,
+and deployable; the meta-repo's smoke test runs the full stack from images
+in GHCR; the monorepo is archived; the team can ship a change to one service
+without touching any other repo.
 
 ---
 

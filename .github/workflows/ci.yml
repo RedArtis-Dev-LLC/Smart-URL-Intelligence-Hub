@@ -5,255 +5,207 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
+# Cancel in-flight runs ONLY for PRs. Pushes to main must complete so the
+# branch-protection required checks aren't cancelled by a follow-up commit.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Least-privilege token: pure-read for everything. SonarCloud's GitHub App
+# handles PR decoration server-side, so we don't need pull-requests: write.
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  actions: read
+
+env:
+  JAVA_VERSION: '25'
+  JAVA_DISTRIBUTION: temurin
+  MAVEN_CLI_OPTS: -B -ntp
 
 jobs:
+  # ------------------------------------------------------------------
+  # 1. Build (compile + install, no tests). Fast-fails on compile errors
+  # and primes the Maven cache for downstream matrix legs.
+  # ------------------------------------------------------------------
   build:
     name: Build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up JDK 25
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: '25'
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
       - name: Compile + install (skip tests)
-        # `install` so each module's JAR lands in ~/.m2 for the per-module
-        # sonar:sonar invocations in the sonar job.
-        run: ./mvnw -B -ntp clean install -DskipTests
+        run: ./mvnw $MAVEN_CLI_OPTS install -DskipTests
 
-      - name: Save workspace
-        uses: actions/cache/save@v4
+  # ------------------------------------------------------------------
+  # 2. Format check (Spotless). Runs in parallel with build — independent.
+  # ------------------------------------------------------------------
+  format:
+    name: Format check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
         with:
-          path: |
-            **/target
-            ~/.m2/repository/com/smarturl
-          key: workspace-${{ github.run_id }}-${{ github.run_attempt }}-build
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
 
+      - name: Spotless check
+        run: ./mvnw $MAVEN_CLI_OPTS spotless:check
+
+  # ------------------------------------------------------------------
+  # 3. Tests, one matrix leg per module → parallel across runners.
+  # `-am` rebuilds upstream module deps; third-party deps come from cache.
+  # ------------------------------------------------------------------
   test:
     name: Test
     runs-on: ubuntu-latest
     needs: build
-    timeout-minutes: 45
-
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - common-lib
+          - config-server
+          - auth-service
+          - api-gateway
+          - link-service
+          - analytics-service
+          - webhook-service
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up JDK 25
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: '25'
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-
-      - name: Restore workspace from build
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            **/target
-            ~/.m2/repository/com/smarturl
-          key: workspace-${{ github.run_id }}-${{ github.run_attempt }}-build
-          fail-on-cache-miss: true
 
       - name: Run unit + integration tests
-        # No `clean` — reuse compiled outputs from build job.
-        run: ./mvnw -B -ntp verify
+        timeout-minutes: 25
+        run: ./mvnw $MAVEN_CLI_OPTS -pl ${{ matrix.module }} -am verify
 
-      - name: Save workspace (with test outputs)
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            **/target
-            ~/.m2/repository/com/smarturl
-          key: workspace-${{ github.run_id }}-${{ github.run_attempt }}-test
-
-      - name: Upload Surefire/Failsafe reports
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports
-          path: |
-            **/target/surefire-reports/**
-            **/target/failsafe-reports/**
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Upload JaCoCo HTML reports
+      - name: Upload module output (coverage + classes + reports)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jacoco-reports
+          name: module-output-${{ matrix.module }}
+          # Sonar needs compiled classes AND jacoco XMLs to compute coverage.
           path: |
-            **/target/site/jacoco/**
-            **/target/site/jacoco-it/**
+            ${{ matrix.module }}/target/classes/**
+            ${{ matrix.module }}/target/test-classes/**
+            ${{ matrix.module }}/target/jacoco.exec
+            ${{ matrix.module }}/target/jacoco-it.exec
+            ${{ matrix.module }}/target/site/jacoco/**
+            ${{ matrix.module }}/target/site/jacoco-it/**
+            ${{ matrix.module }}/target/surefire-reports/**
+            ${{ matrix.module }}/target/failsafe-reports/**
+          retention-days: 7
           if-no-files-found: ignore
-          retention-days: 14
 
-  sonar:
-    name: SonarQube Scan
+  # ------------------------------------------------------------------
+  # 4. Aggregate matrix into a single required status check. Without this,
+  # branch protection would need every matrix leg listed by name —
+  # brittle when modules are added/renamed.
+  # ------------------------------------------------------------------
+  tests-passed:
+    name: All tests passed
     runs-on: ubuntu-latest
     needs: test
-    timeout-minutes: 30
-
-    env:
-      SONAR_HOST_URL: http://localhost:9000
-
+    if: always()
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Fail if any matrix leg failed
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::error::test matrix did not pass (result: ${{ needs.test.result }})"
+            exit 1
+          fi
+
+  # ------------------------------------------------------------------
+  # 5. SonarCloud — ONE aggregated scan covering the whole monorepo.
+  # Skipped if SONAR_ORGANIZATION repo variable is unset.
+  # ------------------------------------------------------------------
+  sonar:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    needs: tests-passed
+    if: ${{ vars.SONAR_ORGANIZATION != '' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
         with:
-          # Full history so Sonar can compute new-code period and blame.
+          # SonarCloud needs full git history for new-code period & blame.
           fetch-depth: 0
 
-      - name: Set up JDK 25
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: '25'
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
-      - name: Cache Sonar analysis files
+      - name: Cache SonarCloud scanner files
         uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-sonar-
 
-      - name: Restore workspace from test
-        uses: actions/cache/restore@v4
+      - name: Restore all module outputs (classes + coverage from test matrix)
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            **/target
-            ~/.m2/repository/com/smarturl
-          key: workspace-${{ github.run_id }}-${{ github.run_attempt }}-test
-          fail-on-cache-miss: true
+          pattern: module-output-*
+          merge-multiple: true
 
-      - name: Generate docker-compose placeholder secrets
-        # Compose substitutes variables for every service at load time, even those
-        # outside the 'sonar' profile. Generated at runtime so no credential-looking
-        # strings live in version control (GitGuardian / similar scanners).
-        run: |
-          {
-            echo "POSTGRES_USER=ci_$(openssl rand -hex 4)"
-            echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
-            echo "POSTGRES_DB=ci_$(openssl rand -hex 4)"
-            echo "MONGO_INITDB_ROOT_USERNAME=ci_$(openssl rand -hex 4)"
-            echo "MONGO_INITDB_ROOT_PASSWORD=$(openssl rand -hex 24)"
-            echo "MONGO_INITDB_DATABASE=ci_analytics"
-            echo "REDIS_PASSWORD=$(openssl rand -hex 24)"
-            echo "RABBITMQ_DEFAULT_USER=ci_$(openssl rand -hex 4)"
-            echo "RABBITMQ_DEFAULT_PASS=$(openssl rand -hex 24)"
-            echo "SONAR_DB_USER=sonar"
-            echo "SONAR_DB_PASSWORD=$(openssl rand -hex 24)"
-            echo "SONAR_DB_NAME=sonar"
-          } >> "$GITHUB_ENV"
-
-      - name: Raise vm.max_map_count for SonarQube
-        # SonarQube embeds Elasticsearch which requires this on the host.
-        run: sudo sysctl -w vm.max_map_count=262144
-
-      - name: Start SonarQube
-        run: docker compose -f docker/docker-compose.yml --profile sonar up -d sonarqube
-
-      - name: Wait for SonarQube to be UP
+      - name: Run SonarCloud scan (aggregated, parent reactor)
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           set -euo pipefail
-          for i in $(seq 1 60); do
-            status=$(curl -sf http://localhost:9000/api/system/status | jq -r '.status' 2>/dev/null || echo "")
-            if [ "$status" = "UP" ]; then
-              echo "SonarQube is UP after $((i*5))s"
-              exit 0
-            fi
-            echo "[$i/60] SonarQube status: ${status:-pending}, retrying in 5s..."
-            sleep 5
-          done
-          echo "::error::SonarQube failed to reach UP status within 5 minutes"
-          docker compose -f docker/docker-compose.yml --profile sonar logs --tail=200 sonarqube || true
-          exit 1
 
-      - name: Bootstrap SONAR_TOKEN
-        run: |
-          set -euo pipefail
-          # SonarQube 26 password policy requires upper + lower + digit + symbol.
-          NEW_ADMIN_PASS="Aa1!$(openssl rand -hex 24)"
-
-          http_code=$(curl -sS -o /tmp/change_pw.out -w '%{http_code}' \
-            -u admin:admin \
-            -X POST "${SONAR_HOST_URL}/api/users/change_password" \
-            --data-urlencode "login=admin" \
-            --data-urlencode "previousPassword=admin" \
-            --data-urlencode "password=${NEW_ADMIN_PASS}")
-          if [ "$http_code" != "204" ]; then
-            echo "::error::change_password returned HTTP $http_code"
-            cat /tmp/change_pw.out || true
-            exit 1
+          # PR mode: SonarCloud analyzes only the diff against base and
+          # reports against the persistent main baseline ("new code" view).
+          # On push to main, we omit these so the full branch is analyzed
+          # and becomes the new baseline.
+          PR_ARGS=()
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_ARGS=(
+              "-Dsonar.pullrequest.key=${{ github.event.pull_request.number }}"
+              "-Dsonar.pullrequest.branch=${{ github.head_ref }}"
+              "-Dsonar.pullrequest.base=${{ github.base_ref }}"
+            )
           fi
 
-          token_json=$(curl -sS -u "admin:${NEW_ADMIN_PASS}" \
-            -X POST "${SONAR_HOST_URL}/api/user_tokens/generate" \
-            --data-urlencode "name=ci-token-${{ github.run_id }}-${{ github.run_attempt }}" \
-            --data-urlencode "type=GLOBAL_ANALYSIS_TOKEN")
-          token=$(echo "$token_json" | jq -r '.token')
-          if [ -z "$token" ] || [ "$token" = "null" ]; then
-            echo "::error::Failed to mint SONAR_TOKEN. Response: $token_json"
-            exit 1
-          fi
-
-          echo "::add-mask::$token"
-          echo "SONAR_TOKEN=$token" >> "$GITHUB_ENV"
-
-      - name: Run Sonar scans per module
-        run: |
-          set -uo pipefail
-          MODULES=(
-            common-lib
-            config-server
-            auth-service
-            api-gateway
-            link-service
-            analytics-service
-            webhook-service
-          )
-          failed=()
-          for m in "${MODULES[@]}"; do
-            echo "::group::Sonar scan: $m"
-            # `-f <module>/pom.xml` (not `-pl <module>`): sonar-maven-plugin 5.x
-            # requires the scanned module to be the Maven execution root, which
-            # `-pl` does not satisfy.
-            if ./mvnw -B -ntp -f "$m/pom.xml" sonar:sonar \
-                "-Dsonar.host.url=${SONAR_HOST_URL}" \
-                "-Dsonar.token=${SONAR_TOKEN}" \
-                -Dsonar.qualitygate.wait=true; then
-              echo "::endgroup::"
-              echo "::notice title=Sonar $m::quality gate passed"
-            else
-              rc=$?
-              echo "::endgroup::"
-              echo "::error title=Sonar $m::scan or quality gate failed (exit $rc)"
-              failed+=("$m")
-            fi
-          done
-          if [ ${#failed[@]} -gt 0 ]; then
-            echo "::error::Quality gate failed for: ${failed[*]}"
-            exit 1
-          fi
-
-      - name: Dump SonarQube logs on failure
-        if: failure()
-        run: docker compose -f docker/docker-compose.yml --profile sonar logs --tail=300 sonarqube || true
+          # Single scan at parent level: Maven walks the full reactor, Sonar
+          # sees every module's sources + jacoco XMLs (matched by glob in the
+          # parent POM), and uploads everything as one project.
+          # `install -DskipTests` ensures internal module jars are in ~/.m2
+          # so the reactor resolves cleanly; jacoco files restored from
+          # artifacts are untouched (no `clean`, no test re-run).
+          ./mvnw $MAVEN_CLI_OPTS install sonar:sonar -DskipTests \
+            -Dsonar.host.url=https://sonarcloud.io \
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }} \
+            -Dsonar.token=$SONAR_TOKEN \
+            -Dsonar.qualitygate.wait=true \
+            "${PR_ARGS[@]}"
