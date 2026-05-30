@@ -48,13 +48,25 @@
         <jacoco.version>0.8.13</jacoco.version>
         <sonar-maven-plugin.version>5.6.0.6792</sonar-maven-plugin.version>
 
-        <sonar.host.url>http://localhost:9000</sonar.host.url>
-        <sonar.projectKey>smart-url-hub-${project.artifactId}</sonar.projectKey>
-        <sonar.projectName>${project.artifactId}</sonar.projectName>
+        <!--
+        Sonar properties. Defaults target SonarCloud; override via -D for
+        local self-hosted SonarQube (e.g. -Dsonar.host.url=http://localhost:9000
+        -Dsonar.organization=local). `sonar.organization` is left empty so the
+        property is defined; CI sets it via -Dsonar.organization=<slug>.
+
+        ONE Sonar project covers the whole monorepo. Scan from the parent
+        (no -pl / -f) — Maven walks the full reactor, Sonar collects sources
+        from every module under one project, and jacoco XML paths are
+        resolved via the glob below relative to the parent basedir.
+        -->
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.organization/>
+        <sonar.projectKey>${sonar.organization}_smart-url-hub</sonar.projectKey>
+        <sonar.projectName>smart-url-hub</sonar.projectName>
         <sonar.java.source>${java.version}</sonar.java.source>
         <sonar.java.target>${java.version}</sonar.java.target>
         <sonar.sourceEncoding>UTF-8</sonar.sourceEncoding>
-        <sonar.coverage.jacoco.xmlReportPaths>${project.basedir}/target/site/jacoco/jacoco.xml,${project.basedir}/target/site/jacoco-it/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+        <sonar.coverage.jacoco.xmlReportPaths>**/target/site/jacoco/jacoco.xml,**/target/site/jacoco-it/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
         <sonar.coverage.exclusions>**/*Application.java,**/config/**,**/dto/**,**/entity/**,**/model/**,**/exception/**</sonar.coverage.exclusions>
         <sonar.cpd.exclusions>**/dto/**,**/entity/**,**/model/**</sonar.cpd.exclusions>
         <sonar.exclusions>**/target/**,**/generated-sources/**</sonar.exclusions>

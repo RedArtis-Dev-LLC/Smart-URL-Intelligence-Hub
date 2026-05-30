@@ -1,0 +1,90 @@
+version: 2
+updates:
+  # Maven — application + library deps. Grouped to reduce PR noise:
+  # one PR per logical family rather than 30 individual bumps a week.
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - maven
+    groups:
+      spring-boot:
+        patterns:
+          - "org.springframework.boot*"
+      spring-cloud:
+        patterns:
+          - "org.springframework.cloud*"
+      spring-framework:
+        patterns:
+          - "org.springframework:*"
+          - "org.springframework.security*"
+          - "org.springframework.data*"
+      jackson:
+        patterns:
+          - "com.fasterxml.jackson*"
+          - "tools.jackson*"
+      testing:
+        patterns:
+          - "org.testcontainers*"
+          - "org.junit*"
+          - "org.assertj*"
+          - "org.wiremock*"
+          - "org.mockito*"
+      observability:
+        patterns:
+          - "io.micrometer*"
+          - "io.zipkin*"
+          - "net.logstash.logback*"
+      resilience:
+        patterns:
+          - "io.github.resilience4j*"
+      jwt:
+        patterns:
+          - "io.jsonwebtoken*"
+      lombok:
+        patterns:
+          - "org.projectlombok*"
+      build-tools:
+        patterns:
+          - "org.apache.maven.plugins*"
+          - "org.jacoco*"
+          - "org.sonarsource*"
+      liquibase:
+        patterns:
+          - "org.liquibase*"
+
+  # GitHub Actions used by our workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Base images referenced in docker-compose.yml.
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - docker
