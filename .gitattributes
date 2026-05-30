@@ -1,0 +1,5 @@
+# Keep mvnw as an LF-terminated executable shell script regardless of the
+# committer's OS or core.autocrlf setting.
+mvnw text eol=lf
+mvnw.cmd text eol=crlf
+* text=auto
