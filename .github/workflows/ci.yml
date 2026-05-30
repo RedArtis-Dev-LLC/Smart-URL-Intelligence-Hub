@@ -233,7 +233,10 @@ jobs:
           failed=()
           for m in "${MODULES[@]}"; do
             echo "::group::Sonar scan: $m"
-            if ./mvnw -B -ntp -pl "$m" sonar:sonar \
+            # `-f <module>/pom.xml` (not `-pl <module>`): sonar-maven-plugin 5.x
+            # requires the scanned module to be the Maven execution root, which
+            # `-pl` does not satisfy.
+            if ./mvnw -B -ntp -f "$m/pom.xml" sonar:sonar \
                 "-Dsonar.host.url=${SONAR_HOST_URL}" \
                 "-Dsonar.token=${SONAR_TOKEN}" \
                 -Dsonar.qualitygate.wait=true; then
