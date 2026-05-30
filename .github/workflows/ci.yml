@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-scan:
+    name: Build, Test, Sonar Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      # docker-compose variable substitution. The main stack services
+      # aren't started in CI, but compose still resolves their variables
+      # while loading the file, so we provide placeholders to suppress warnings.
+      POSTGRES_USER: hub
+      POSTGRES_PASSWORD: hubpass
+      POSTGRES_DB: hub
+      MONGO_INITDB_ROOT_USERNAME: hub
+      MONGO_INITDB_ROOT_PASSWORD: hubpass
+      MONGO_INITDB_DATABASE: analytics
+      REDIS_PASSWORD: hubpass
+      RABBITMQ_DEFAULT_USER: hub
+      RABBITMQ_DEFAULT_PASS: hubpass
+      SONAR_DB_USER: sonar
+      SONAR_DB_PASSWORD: sonarpass
+      SONAR_DB_NAME: sonar
+      SONAR_HOST_URL: http://localhost:9000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so Sonar can compute new-code period and blame.
+          fetch-depth: 0
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Cache Sonar analysis files
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-sonar-
+
+      # SonarQube embeds Elasticsearch, which requires vm.max_map_count >= 262144.
+      # GitHub-hosted Linux runners default to a lower value.
+      - name: Raise vm.max_map_count for SonarQube
+        run: sudo sysctl -w vm.max_map_count=262144
+
+      - name: Start SonarQube
+        run: docker compose -f docker/docker-compose.yml --profile sonar up -d sonarqube
+
+      - name: Wait for SonarQube to be UP
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            status=$(curl -sf http://localhost:9000/api/system/status | jq -r '.status' 2>/dev/null || echo "")
+            if [ "$status" = "UP" ]; then
+              echo "SonarQube is UP after $((i*5))s"
+              exit 0
+            fi
+            echo "[$i/60] SonarQube status: ${status:-pending}, retrying in 5s..."
+            sleep 5
+          done
+          echo "::error::SonarQube failed to reach UP status within 5 minutes"
+          docker compose -f docker/docker-compose.yml --profile sonar logs --tail=200 sonarqube || true
+          exit 1
+
+      - name: Bootstrap SONAR_TOKEN
+        run: |
+          set -euo pipefail
+          NEW_ADMIN_PASS="ci-$(openssl rand -hex 16)"
+
+          # SonarQube ships with admin/admin; first call must change the password.
+          http_code=$(curl -sS -o /tmp/change_pw.out -w '%{http_code}' \
+            -u admin:admin \
+            -X POST "${SONAR_HOST_URL}/api/users/change_password" \
+            --data-urlencode "login=admin" \
+            --data-urlencode "previousPassword=admin" \
+            --data-urlencode "password=${NEW_ADMIN_PASS}")
+          if [ "$http_code" != "204" ]; then
+            echo "::error::change_password returned HTTP $http_code"
+            cat /tmp/change_pw.out || true
+            exit 1
+          fi
+
+          # Mint a global analysis token usable for scanning any project.
+          token_json=$(curl -sS -u "admin:${NEW_ADMIN_PASS}" \
+            -X POST "${SONAR_HOST_URL}/api/user_tokens/generate" \
+            --data-urlencode "name=ci-token-${{ github.run_id }}-${{ github.run_attempt }}" \
+            --data-urlencode "type=GLOBAL_ANALYSIS_TOKEN")
+          token=$(echo "$token_json" | jq -r '.token')
+          if [ -z "$token" ] || [ "$token" = "null" ]; then
+            echo "::error::Failed to mint SONAR_TOKEN. Response: $token_json"
+            exit 1
+          fi
+
+          echo "::add-mask::$token"
+          echo "SONAR_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Build, test, install (verify + install to local repo)
+        # `install` (not just `verify`) so each module's artifacts are in
+        # the local Maven repo for the per-module `sonar:sonar` calls below.
+        run: ./mvnw -B -ntp clean install
+
+      - name: Run Sonar scans per module
+        run: |
+          set -uo pipefail
+          MODULES=(
+            common-lib
+            config-server
+            auth-service
+            api-gateway
+            link-service
+            analytics-service
+            webhook-service
+          )
+          failed=()
+          for m in "${MODULES[@]}"; do
+            echo "::group::Sonar scan: $m"
+            if ./mvnw -B -ntp -pl "$m" sonar:sonar \
+                "-Dsonar.host.url=${SONAR_HOST_URL}" \
+                "-Dsonar.token=${SONAR_TOKEN}" \
+                -Dsonar.qualitygate.wait=true; then
+              echo "::endgroup::"
+              echo "::notice title=Sonar $m::quality gate passed"
+            else
+              rc=$?
+              echo "::endgroup::"
+              echo "::error title=Sonar $m::scan or quality gate failed (exit $rc)"
+              failed+=("$m")
+            fi
+          done
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "::error::Quality gate failed for: ${failed[*]}"
+            exit 1
+          fi
+
+      - name: Upload Surefire/Failsafe reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload JaCoCo HTML reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-reports
+          path: |
+            **/target/site/jacoco/**
+            **/target/site/jacoco-it/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Dump SonarQube logs on failure
+        if: failure()
+        run: docker compose -f docker/docker-compose.yml --profile sonar logs --tail=300 sonarqube || true

@@ -381,10 +381,10 @@ $env:SONAR_TOKEN = "<token>"
 - [x] Stage 4 — Auth Service
 - [x] Stage 5 — API Gateway
 - [x] Stage 6 — Link Service
-- [ ] Stage 7 — Analytics Service
+- [x] Stage 7 — Analytics Service
 - [ ] Stage 8 — Webhook Service
 - [ ] Stage 9 — Docker Compose Integration & Final Wiring
-- [ ] Stage 10 — CI Pipeline
+- [x] Stage 10 — CI Pipeline
 
 ---
 
