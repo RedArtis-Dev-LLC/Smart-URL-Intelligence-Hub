@@ -5,8 +5,9 @@ updates:
   - package-ecosystem: maven
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      # Monthly auto-scan; trigger on-demand via
+      # Insights → Dependency graph → Dependabot → Check for updates.
+      interval: monthly
       time: "06:00"
       timezone: Europe/Kyiv
     open-pull-requests-limit: 10
@@ -63,8 +64,9 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      # Monthly auto-scan; trigger on-demand via
+      # Insights → Dependency graph → Dependabot → Check for updates.
+      interval: monthly
       time: "06:00"
       timezone: Europe/Kyiv
     open-pull-requests-limit: 5
@@ -80,8 +82,9 @@ updates:
   - package-ecosystem: docker
     directory: /docker
     schedule:
-      interval: weekly
-      day: monday
+      # Monthly auto-scan; trigger on-demand via
+      # Insights → Dependency graph → Dependabot → Check for updates.
+      interval: monthly
       time: "06:00"
       timezone: Europe/Kyiv
     open-pull-requests-limit: 5
