@@ -51,27 +51,7 @@ jobs:
         run: ./mvnw $MAVEN_CLI_OPTS install -DskipTests
 
   # ------------------------------------------------------------------
-  # 2. Format check (Spotless). Runs in parallel with build — independent.
-  # ------------------------------------------------------------------
-  format:
-    name: Format check
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
-        with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: maven
-
-      - name: Spotless check
-        run: ./mvnw $MAVEN_CLI_OPTS spotless:check
-
-  # ------------------------------------------------------------------
-  # 3. Tests, one matrix leg per module → parallel across runners.
+  # 2. Tests, one matrix leg per module → parallel across runners.
   # `-am` rebuilds upstream module deps; third-party deps come from cache.
   # ------------------------------------------------------------------
   test:
@@ -125,7 +105,7 @@ jobs:
           if-no-files-found: ignore
 
   # ------------------------------------------------------------------
-  # 4. Aggregate matrix into a single required status check. Without this,
+  # 3. Aggregate matrix into a single required status check. Without this,
   # branch protection would need every matrix leg listed by name —
   # brittle when modules are added/renamed.
   # ------------------------------------------------------------------
@@ -143,7 +123,7 @@ jobs:
           fi
 
   # ------------------------------------------------------------------
-  # 5. SonarCloud — ONE aggregated scan covering the whole monorepo.
+  # 4. SonarCloud — ONE aggregated scan covering the whole monorepo.
   # Skipped if SONAR_ORGANIZATION repo variable is unset.
   # ------------------------------------------------------------------
   sonar:

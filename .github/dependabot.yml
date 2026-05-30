@@ -55,7 +55,6 @@ updates:
           - "org.apache.maven.plugins*"
           - "org.jacoco*"
           - "org.sonarsource*"
-          - "com.diffplug.spotless*"
       liquibase:
         patterns:
           - "org.liquibase*"

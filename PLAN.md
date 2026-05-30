@@ -393,9 +393,6 @@ $env:SONAR_TOKEN = "<token>"
     "-Dsonar.token=$env:SONAR_TOKEN"
 ```
 
-Formatting is also enforced — `mvn verify` runs Spotless's `check` goal
-(palantirJavaFormat, import ordering, unused-import removal). Fix violations
-with `./mvnw spotless:apply`.
 
 ---
 
@@ -664,9 +661,7 @@ a Dependabot config under `.github/`:
 Trigger: push to `main`, PR to `main`, manual via `workflow_dispatch`.
 
 ```
-build  ──┐
-         ├──► test (matrix × 7 modules) ──► tests-passed ──► sonar (single aggregated)
-format ──┘
+build ──► test (matrix × 7 modules) ──► tests-passed ──► sonar (single aggregated)
 ```
 
 - **Concurrency:** `cancel-in-progress` only on PRs, so pushes to `main` finish
@@ -676,8 +671,6 @@ format ──┘
 - **Java pinning:** `JAVA_VERSION: '25'` via `actions/setup-java@v4` (temurin).
 - **`build`** — `./mvnw install -DskipTests`. Fast-fail compile check; primes
   the setup-java Maven cache for the matrix legs.
-- **`format`** — `./mvnw spotless:check`. Runs in parallel with build (no
-  dependency).
 - **`test`** — matrix job, one runner per module, `./mvnw -pl <module> -am
   verify`. Uploads `module-output-<module>` artifact with target/classes,
   jacoco XMLs, and surefire/failsafe reports for the sonar job.
@@ -718,11 +711,8 @@ observability, etc.) to prevent PR floods.
 3. Generate a User Token under **My Account → Security**.
 4. In the GitHub repo: add **secret** `SONAR_TOKEN` and **variable**
    `SONAR_ORGANIZATION = <org-slug>`.
-5. Run `./mvnw spotless:apply` once to format the existing code; commit the
-   result. From then on `mvn verify` enforces formatting.
-6. Configure branch protection on `main` to require the following status
-   checks: `Build`, `Format check`, `All tests passed`, `SonarCloud`,
-   `Analyze Java`.
+5. Configure branch protection on `main` to require the following status
+   checks: `Build`, `All tests passed`, `SonarCloud`, `Analyze Java`.
 
 **Done when:** a push to `main` triggers the workflow, all tests pass, the
 SonarCloud quality gate passes (new-code view), CodeQL surfaces no new alerts,
