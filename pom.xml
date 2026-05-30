@@ -40,7 +40,7 @@
         <jjwt.version>0.12.6</jjwt.version>
         <resilience4j.version>2.3.0</resilience4j.version>
         <logstash-logback.version>8.0</logstash-logback.version>
-        <liquibase.version>4.30.0</liquibase.version>
+        <liquibase.version>5.0.3</liquibase.version>
         <testcontainers.version>1.20.4</testcontainers.version>
         <wiremock.version>3.10.0</wiremock.version>
         <assertj.version>3.27.0</assertj.version>
