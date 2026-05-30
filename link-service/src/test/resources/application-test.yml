@@ -12,6 +12,7 @@ spring:
       ddl-auto: validate
     properties:
       hibernate.jdbc.time_zone: UTC
+      hibernate.type.json_format_mapper: com.smarturl.hub.link.config.Jackson3JsonFormatMapper
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
 

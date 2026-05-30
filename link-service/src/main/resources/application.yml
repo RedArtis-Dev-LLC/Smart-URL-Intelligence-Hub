@@ -6,3 +6,6 @@ spring:
   cloud:
     config:
       fail-fast: true
+  jpa:
+    properties:
+      hibernate.type.json_format_mapper: com.smarturl.hub.link.config.Jackson3JsonFormatMapper
