@@ -359,13 +359,17 @@ $env:SONAR_TOKEN = "<token>"
 # Build everything once so all jacoco XMLs exist:
 ./mvnw verify
 
-# Scan one service in isolation:
-./mvnw -pl auth-service sonar:sonar "-Dsonar.token=$env:SONAR_TOKEN"
+# Scan one service in isolation. Use `-f <module>/pom.xml`, not `-pl <module>`:
+# sonar-maven-plugin 5.x requires the scanned module to be Maven's execution
+# root, which `-pl` does not satisfy (it leaves the parent as the execution
+# root and the plugin then fails with "Maven session does not declare a top
+# level project").
+./mvnw -f auth-service/pom.xml sonar:sonar "-Dsonar.token=$env:SONAR_TOKEN"
 
 # Or scan every service in turn (each creates / updates its own Sonar project):
 "common-lib","config-server","auth-service","api-gateway","link-service",`
     "analytics-service","webhook-service" | ForEach-Object {
-    ./mvnw -pl $_ sonar:sonar "-Dsonar.token=$env:SONAR_TOKEN"
+    ./mvnw -f "$_/pom.xml" sonar:sonar "-Dsonar.token=$env:SONAR_TOKEN"
 }
 ```
 
@@ -381,10 +385,10 @@ $env:SONAR_TOKEN = "<token>"
 - [x] Stage 4 — Auth Service
 - [x] Stage 5 — API Gateway
 - [x] Stage 6 — Link Service
-- [ ] Stage 7 — Analytics Service
+- [x] Stage 7 — Analytics Service
 - [ ] Stage 8 — Webhook Service
 - [ ] Stage 9 — Docker Compose Integration & Final Wiring
-- [ ] Stage 10 — CI Pipeline
+- [x] Stage 10 — CI Pipeline
 
 ---
 
@@ -643,10 +647,12 @@ Key points:
      project. Recommended pattern: a GitHub Actions matrix job (one entry per
      module: `common-lib`, `config-server`, `auth-service`, `api-gateway`,
      `link-service`, `analytics-service`, `webhook-service`) running
-     `./mvnw -pl ${{ matrix.module }} sonar:sonar
+     `./mvnw -f ${{ matrix.module }}/pom.xml sonar:sonar
      -Dsonar.host.url=http://localhost:9000
      -Dsonar.token=$SONAR_TOKEN
-     -Dsonar.qualitygate.wait=true`. A matrix is preferable to a shell loop because
+     -Dsonar.qualitygate.wait=true`. (Use `-f <module>/pom.xml` rather than
+     `-pl <module>` — sonar-maven-plugin 5.x requires the scanned module to be
+     Maven's execution root, which `-pl` does not satisfy.) A matrix is preferable to a shell loop because
      each service's gate failure is reported as a separate failed job rather than
      short-circuiting the rest. Alternative if a matrix is overkill: a single shell
      loop that records each module's gate result and fails the job at the end if any

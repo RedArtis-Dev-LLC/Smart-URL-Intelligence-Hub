@@ -21,24 +21,15 @@ public class OutboxWriter {
     private final Clock clock;
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void write(UUID aggregateId, String eventType, Object payload) {
-        String json = serialize(payload);
+    public void write(UUID aggregateId, String eventType, Object payload) throws JsonProcessingException {
         OutboxEvent event = OutboxEvent.builder()
                 .id(UUID.randomUUID())
                 .aggregateId(aggregateId)
                 .eventType(eventType)
-                .payload(json)
+                .payload(objectMapper.writeValueAsString(payload))
                 .published(false)
                 .createdAt(Instant.now(clock))
                 .build();
         repository.save(event);
-    }
-
-    private String serialize(Object payload) {
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Failed to serialize outbox payload", e);
-        }
     }
 }
