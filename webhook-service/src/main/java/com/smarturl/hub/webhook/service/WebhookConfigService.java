@@ -95,7 +95,7 @@ public class WebhookConfigService {
             }
         } catch (ResponseStatusException e) {
             throw e;
-        } catch (RuntimeException e) {
+        } catch (RuntimeException _) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Unable to verify link ownership");
         }
     }

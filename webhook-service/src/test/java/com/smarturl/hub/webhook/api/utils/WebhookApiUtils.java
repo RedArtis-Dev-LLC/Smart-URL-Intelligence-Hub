@@ -81,6 +81,21 @@ public class WebhookApiUtils {
                     WEBHOOKS_URL + "/" + id, HttpMethod.GET, new HttpEntity<>(userHeaders(userId)), ProblemDetail.class);
         }
 
+        public static ResponseEntity<ProblemDetail> getNoAuth(UUID id, TestRestTemplate restTemplate) {
+            return restTemplate.exchange(
+                    WEBHOOKS_URL + "/" + id, HttpMethod.GET, new HttpEntity<>(new HttpHeaders()), ProblemDetail.class);
+        }
+
+        public static ResponseEntity<ProblemDetail> update(UUID id, UpdateWebhookRequest request, UUID userId, TestRestTemplate restTemplate) {
+            return restTemplate.exchange(
+                    WEBHOOKS_URL + "/" + id, HttpMethod.PUT, new HttpEntity<>(request, userHeaders(userId)), ProblemDetail.class);
+        }
+
+        public static ResponseEntity<ProblemDetail> delete(UUID id, UUID userId, TestRestTemplate restTemplate) {
+            return restTemplate.exchange(
+                    WEBHOOKS_URL + "/" + id, HttpMethod.DELETE, new HttpEntity<>(userHeaders(userId)), ProblemDetail.class);
+        }
+
         public static ResponseEntity<ProblemDetail> listNoAuth(TestRestTemplate restTemplate) {
             return restTemplate.exchange(
                     WEBHOOKS_URL, HttpMethod.GET, new HttpEntity<>(new HttpHeaders()), ProblemDetail.class);
