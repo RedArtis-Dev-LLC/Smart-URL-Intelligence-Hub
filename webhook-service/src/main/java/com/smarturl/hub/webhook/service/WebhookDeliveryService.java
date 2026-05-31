@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -96,7 +97,11 @@ public class WebhookDeliveryService {
                 .lastError(lastError)
                 .createdAt(Instant.now(clock))
                 .build();
-        deliveryRepository.save(delivery);
+        try {
+            deliveryRepository.save(delivery);
+        } catch (DataIntegrityViolationException _) {
+            log.debug("Concurrent duplicate delivery for eventId={}", event.eventId());
+        }
     }
 
     private Counter counter(String status) {
