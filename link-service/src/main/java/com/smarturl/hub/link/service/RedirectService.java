@@ -60,6 +60,7 @@ public class RedirectService {
                 link.getId(),
                 link.getUserId(),
                 link.getShortCode(),
+                link.getOriginalUrl(),
                 Instant.now(clock),
                 context.ip(),
                 context.userAgent(),

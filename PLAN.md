@@ -407,7 +407,7 @@ $env:SONAR_TOKEN = "<token>"
 - [x] Stage 5 — API Gateway
 - [x] Stage 6 — Link Service
 - [x] Stage 7 — Analytics Service
-- [ ] Stage 8 — Webhook Service
+- [x] Stage 8 — Webhook Service
 - [ ] Stage 9 — Docker Compose Integration & Final Wiring
 - [x] Stage 10 — CI Pipeline
 - [ ] Stage 11 — Migrate Monorepo to Repo-per-Service

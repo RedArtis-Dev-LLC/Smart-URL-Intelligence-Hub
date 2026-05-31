@@ -1,0 +1,67 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-webhook-deliveries
+      author: smart-url-hub
+      changes:
+        - createTable:
+            tableName: webhook_deliveries
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: config_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: event_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: triggered_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: response_code
+                  type: INTEGER
+              - column:
+                  name: attempt_count
+                  type: INTEGER
+                  defaultValueNumeric: 1
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_error
+                  type: TEXT
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: webhook_deliveries
+            baseColumnNames: config_id
+            referencedTableName: webhook_configs
+            referencedColumnNames: id
+            constraintName: fk_deliveries_config_id
+        - addUniqueConstraint:
+            tableName: webhook_deliveries
+            columnNames: event_id
+            constraintName: uq_webhook_deliveries_event_id
+        - createIndex:
+            tableName: webhook_deliveries
+            indexName: idx_webhook_deliveries_config_id
+            columns:
+              - column:
+                  name: config_id

@@ -163,6 +163,7 @@ class ClickEventConsumerIT extends AbstractIntegrationTest {
                 linkId,
                 UUID.randomUUID(),
                 "abcd123",
+                "https://example.com/original",
                 Instant.now(),
                 "203.0.113.42",
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "

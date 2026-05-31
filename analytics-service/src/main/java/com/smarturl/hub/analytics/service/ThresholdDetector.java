@@ -21,7 +21,7 @@ public class ThresholdDetector {
     private final ThresholdReachedPublisher publisher;
     private final Clock clock;
 
-    public void check(UUID linkId, long currentCount) {
+    public void check(UUID linkId, String shortCode, String originalUrl, long currentCount) {
         List<WebhookThreshold> thresholds = fetchThresholds(linkId);
         if (thresholds.isEmpty()) {
             return;
@@ -31,6 +31,8 @@ public class ThresholdDetector {
                 publisher.publish(new ThresholdReachedEvent(
                         UUID.randomUUID(),
                         linkId,
+                        shortCode,
+                        originalUrl,
                         threshold.configId(),
                         threshold.threshold(),
                         currentCount,

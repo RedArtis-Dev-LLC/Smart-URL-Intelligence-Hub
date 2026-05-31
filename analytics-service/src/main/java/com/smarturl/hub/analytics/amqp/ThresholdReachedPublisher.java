@@ -20,7 +20,7 @@ public class ThresholdReachedPublisher {
                 properties.amqp().thresholdExchange(),
                 properties.amqp().thresholdRoutingKey(),
                 event);
-        log.info("Published ThresholdReachedEvent [linkId={}, configId={}, threshold={}, count={}]",
-                event.linkId(), event.webhookConfigId(), event.threshold(), event.currentCount());
+        log.info("Published ThresholdReachedEvent [linkId={}, shortCode={}, configId={}, threshold={}, count={}]",
+                event.linkId(), event.shortCode(), event.webhookConfigId(), event.threshold(), event.currentCount());
     }
 }

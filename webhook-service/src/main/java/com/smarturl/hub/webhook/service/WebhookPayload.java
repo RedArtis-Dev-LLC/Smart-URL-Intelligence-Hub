@@ -1,14 +1,13 @@
-package com.smarturl.hub.analytics.amqp.event;
+package com.smarturl.hub.webhook.service;
 
 import java.time.Instant;
 import java.util.UUID;
 
-public record ThresholdReachedEvent(
+public record WebhookPayload(
         UUID eventId,
         UUID linkId,
         String shortCode,
         String originalUrl,
-        UUID webhookConfigId,
         long threshold,
         long currentCount,
         Instant reachedAt) {

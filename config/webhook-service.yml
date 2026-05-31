@@ -6,3 +6,45 @@ spring:
     url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/webhooks_db
     username: ${POSTGRES_USER}
     password: ${POSTGRES_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+  cloud:
+    openfeign:
+      lazy-attributes-resolution: true
+      client:
+        config:
+          default:
+            connect-timeout: 2000
+            read-timeout: 5000
+            logger-level: BASIC
+
+webhook:
+  amqp:
+    threshold-exchange: threshold.reached
+    threshold-routing-key: threshold.reached
+    threshold-queue: webhook.trigger.queue
+    threshold-dlq: webhook.trigger.dlq
+  link-service:
+    base-url: ${LINK_SERVICE_URL:http://link-service:8082}
+  delivery:
+    max-attempts: 3
+    initial-backoff-ms: 2000
+    backoff-multiplier: 2
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      webhook-delivery:
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state:
+          seconds: 30
+        permitted-number-of-calls-in-half-open-state: 3
+        register-health-indicator: true

@@ -10,6 +10,7 @@ public record ClickEventMessage(
         UUID linkId,
         UUID userId,
         String shortCode,
+        String originalUrl,
         Instant timestamp,
         String ip,
         String userAgent,

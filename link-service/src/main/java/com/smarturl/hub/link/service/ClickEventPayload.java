@@ -8,6 +8,7 @@ public record ClickEventPayload(
         UUID linkId,
         UUID userId,
         String shortCode,
+        String originalUrl,
         Instant timestamp,
         String ip,
         String userAgent,

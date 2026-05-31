@@ -66,7 +66,7 @@ public class ClickEventProcessor {
 
         long total = clickCounterService.incrementTotal(event.linkId());
         clickCounterService.addUniqueVisitor(event.linkId(), event.ip());
-        thresholdDetector.check(event.linkId(), total);
+        thresholdDetector.check(event.linkId(), event.shortCode(), event.originalUrl(), total);
         counter(STATUS_SUCCESS).increment();
     }
 
