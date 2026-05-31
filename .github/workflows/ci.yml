@@ -90,7 +90,14 @@ jobs:
         with:
           name: module-output-${{ matrix.module }}
           # Sonar needs compiled classes AND jacoco XMLs to compute coverage.
+          # `pom.xml` (parent, at workspace root) is included as an LCA anchor:
+          # upload-artifact@v4+ strips the least-common-ancestor of all paths,
+          # so without something at workspace root the `<module>/target/` prefix
+          # would be stripped and the jacoco XMLs would land at the workspace
+          # root on download (instead of `<module>/target/site/jacoco/...`),
+          # breaking sonar's `**/target/site/jacoco/jacoco.xml` glob.
           path: |
+            pom.xml
             ${{ matrix.module }}/target/classes/**
             ${{ matrix.module }}/target/test-classes/**
             ${{ matrix.module }}/target/jacoco.exec
