@@ -194,9 +194,11 @@ jobs:
           # sees every module's sources + jacoco XMLs (matched by glob in the
           # parent POM), and uploads everything as one project.
           # `install -DskipTests` ensures internal module jars are in ~/.m2
-          # so the reactor resolves cleanly; jacoco files restored from
-          # artifacts are untouched (no `clean`, no test re-run).
-          ./mvnw $MAVEN_CLI_OPTS install sonar:sonar -DskipTests \
+          # so the reactor resolves cleanly; `-Djacoco.skip=true` prevents
+          # JaCoCo from overwriting the XML reports restored from artifacts
+          # (important for modules that have only ITs and no unit tests, where
+          # jacoco.exec is empty and `jacoco:report` would produce 0% coverage).
+          ./mvnw $MAVEN_CLI_OPTS install sonar:sonar -DskipTests -Djacoco.skip=true \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.organization="$SONAR_ORGANIZATION" \
             -Dsonar.token="$SONAR_TOKEN" \
