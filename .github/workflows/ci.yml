@@ -90,7 +90,14 @@ jobs:
         with:
           name: module-output-${{ matrix.module }}
           # Sonar needs compiled classes AND jacoco XMLs to compute coverage.
+          # `pom.xml` (parent, at workspace root) is included as an LCA anchor:
+          # upload-artifact@v4+ strips the least-common-ancestor of all paths,
+          # so without something at workspace root the `<module>/target/` prefix
+          # would be stripped and the jacoco XMLs would land at the workspace
+          # root on download (instead of `<module>/target/site/jacoco/...`),
+          # breaking sonar's `**/target/site/jacoco/jacoco.xml` glob.
           path: |
+            pom.xml
             ${{ matrix.module }}/target/classes/**
             ${{ matrix.module }}/target/test-classes/**
             ${{ matrix.module }}/target/jacoco.exec
@@ -194,9 +201,11 @@ jobs:
           # sees every module's sources + jacoco XMLs (matched by glob in the
           # parent POM), and uploads everything as one project.
           # `install -DskipTests` ensures internal module jars are in ~/.m2
-          # so the reactor resolves cleanly; jacoco files restored from
-          # artifacts are untouched (no `clean`, no test re-run).
-          ./mvnw $MAVEN_CLI_OPTS install sonar:sonar -DskipTests \
+          # so the reactor resolves cleanly; `-Djacoco.skip=true` prevents
+          # JaCoCo from overwriting the XML reports restored from artifacts
+          # (important for modules that have only ITs and no unit tests, where
+          # jacoco.exec is empty and `jacoco:report` would produce 0% coverage).
+          ./mvnw $MAVEN_CLI_OPTS install sonar:sonar -DskipTests -Djacoco.skip=true \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.organization="$SONAR_ORGANIZATION" \
             -Dsonar.token="$SONAR_TOKEN" \

@@ -6,6 +6,8 @@ import java.util.UUID;
 public record ThresholdReachedEvent(
         UUID eventId,
         UUID linkId,
+        String shortCode,
+        String originalUrl,
         UUID webhookConfigId,
         long threshold,
         long currentCount,

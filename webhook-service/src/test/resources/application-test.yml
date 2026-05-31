@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: webhook-service
+  cloud:
+    config:
+      enabled: false
+    openfeign:
+      lazy-attributes-resolution: true
+  config:
+    import: ""
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+management:
+  tracing:
+    enabled: false
+  zipkin:
+    tracing:
+      export:
+        enabled: false
+
+webhook:
+  amqp:
+    threshold-exchange: threshold.reached
+    threshold-routing-key: threshold.reached
+    threshold-queue: webhook.trigger.queue
+    threshold-dlq: webhook.trigger.dlq
+  delivery:
+    max-attempts: 3
+    initial-backoff-ms: 100
+    backoff-multiplier: 2
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      webhook-delivery:
+        sliding-window-size: 3
+        failure-rate-threshold: 50
+        wait-duration-in-open-state:
+          seconds: 5
+        permitted-number-of-calls-in-half-open-state: 1
+        minimum-number-of-calls: 3

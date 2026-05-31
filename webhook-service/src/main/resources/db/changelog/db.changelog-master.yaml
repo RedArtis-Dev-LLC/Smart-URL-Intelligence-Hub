@@ -1,0 +1,5 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/001-create-webhook-configs.yaml
+  - include:
+      file: db/changelog/002-create-webhook-deliveries.yaml

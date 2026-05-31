@@ -407,7 +407,7 @@ $env:SONAR_TOKEN = "<token>"
 - [x] Stage 5 — API Gateway
 - [x] Stage 6 — Link Service
 - [x] Stage 7 — Analytics Service
-- [ ] Stage 8 — Webhook Service
+- [x] Stage 8 — Webhook Service
 - [ ] Stage 9 — Docker Compose Integration & Final Wiring
 - [x] Stage 10 — CI Pipeline
 - [ ] Stage 11 — Migrate Monorepo to Repo-per-Service
@@ -932,3 +932,18 @@ healthcheck:
   start_period: 30s
 ```
 Combine with `depends_on.<service>.condition: service_healthy` to enforce startup ordering.
+
+### 8.7 Webhook Delivery Retry Blocks RabbitMQ Listener Thread (Medium Priority)
+
+`WebhookDeliveryService` retries failed deliveries with exponential backoff using
+`Thread.sleep` on the RabbitMQ listener thread. With the current config (3 attempts,
+2s initial, 2× multiplier) this blocks the consumer for up to ~6s per event. Under
+high threshold-event volume this starves the listener pool and delays processing of
+subsequent messages.
+
+Acceptable for current low-volume usage, but before production load:
+- **Option A:** Move delivery to an async executor (`@Async` or `CompletableFuture`)
+  so the listener thread is freed immediately.
+- **Option B:** On failure, republish the event to a delay queue (RabbitMQ TTL +
+  dead-letter back to the main queue) instead of sleeping in-process. This gives
+  per-message backoff without blocking any thread.
