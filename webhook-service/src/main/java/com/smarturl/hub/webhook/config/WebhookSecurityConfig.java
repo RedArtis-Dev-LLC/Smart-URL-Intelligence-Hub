@@ -16,6 +16,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class WebhookSecurityConfig {
 
     @Bean
+    @SuppressWarnings("java:S4502") // CSRF disabled intentionally: stateless API authenticated via gateway headers, no browser session or cookies
     public SecurityFilterChain webhookSecurityFilterChain(
             HttpSecurity http,
             GatewayAuthFilter gatewayAuthFilter,
