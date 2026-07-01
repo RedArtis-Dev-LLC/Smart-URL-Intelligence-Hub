@@ -45,7 +45,7 @@
         <wiremock.version>3.13.2</wiremock.version>
         <assertj.version>3.27.7</assertj.version>
 
-        <jacoco.version>0.8.14</jacoco.version>
+        <jacoco.version>0.8.15</jacoco.version>
         <sonar-maven-plugin.version>5.7.0.6970</sonar-maven-plugin.version>
 
         <!--
